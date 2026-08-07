@@ -1,2 +1,2 @@
 # KillLime
-The killing ofr Citron
+The killing of Citron
