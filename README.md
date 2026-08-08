@@ -73,8 +73,3 @@ Logic for combat, setting the client & server tick, and lag compensating entitie
 * `entity/entity.go`
 * `entity/rewind.go`
 
-## Credits
-* [ethaniccc](https://www.github.com/ethaniccc) - Created the systems for validating combat and movement, while keeping lag-compensation in mind.
-* [JustTalDevelops](https://github.com/JustTalDevelops) - Created the base of KillLime, making it able to intercept packets, and avoiding pesky import cycle.
-* [هاشم](https://github.com/hashimthearab) - Created the base of KillLime
-* [cjmustard](https://www.github.com/cjmustard) - Moral support
