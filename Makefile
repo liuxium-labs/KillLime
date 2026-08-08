@@ -16,4 +16,4 @@ build:
 	cd example/dragonfly && go build -trimpath -ldflags "-s -w" -o ../../release/killlime-dragonfly.exe .
 
 release: build
-	cd release && powershell -Command "Compress-Archive -Path 'killlime-proxy.exe','killlime-dragonfly.exe' -DestinationPath 'killlime-windows-x64.zip' -Force"
+	cd release && powershell -Command "Compress-Archive -Path 'killlime-proxy.exe','killlime-dragonfly.exe' -DestinationPath 'killlime-v0.2.0-windows-x64.zip' -Force"
