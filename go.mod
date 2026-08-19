@@ -2,7 +2,7 @@ module github.com/killlime/killlime
 
 go 1.26.0
 
-replace github.com/df-mc/dragonfly => github.com/oomph-ac/dragonfly v0.0.0-20260714052818-ea2fd40ad95e
+replace github.com/df-mc/dragonfly => github.com/oomph-ac/dragonfly v0.0.0-20260806045455-c1faf42bed56
 
 replace github.com/killlime/killlime/deps/proxy => ./deps/proxy
 
@@ -13,8 +13,8 @@ require (
 	github.com/go-gl/mathgl v1.2.0
 	github.com/hjson/hjson-go/v4 v4.6.0
 	github.com/killlime/killlime/deps/proxy v0.2.0
-	github.com/sandertv/go-raknet v1.15.1-0.20260112202637-beca0b10c217
-	github.com/sandertv/gophertunnel v1.57.2-0.20260714084219-654cd5f0bcb4
+	github.com/sandertv/go-raknet v1.15.2-0.20260705184311-0d1fd09e2cf6
+	github.com/sandertv/gophertunnel v1.58.0
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa
 )
@@ -29,12 +29,12 @@ require (
 	github.com/df-mc/goleveldb v1.1.9 // indirect
 	github.com/df-mc/jsonc v1.0.5 // indirect
 	github.com/df-mc/worldupgrader v1.0.21 // indirect
+	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/pion/datachannel v1.6.0 // indirect
 	github.com/pion/dtls/v3 v3.1.2 // indirect
 	github.com/pion/ice/v4 v4.2.1 // indirect

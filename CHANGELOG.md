@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.2.2 - 2026-08-08
+
+### Changed
+- BadPacket checks (A-U) are no longer registered: they repeatedly false-flagged legitimate clients
+  (e.g. BadPacket L flagged the vanilla per-tick gravity delta `-0.0784` as a violation, and BadPacket A
+  punished on benign simulation-frame resets). The checks remain implemented and can be re-enabled in
+  `player/detection/register.go`.
+
+### Added
+- Scaffold B — detects fast diagonal/extended block placements beyond the vanilla interaction distance
+  (scaffold modules with an "extend" setting). Placed-block distance is measured from the player's eye,
+  mirroring the proxy's own interaction-distance check; anything past 7.5 blocks is flagged. Creative
+  players are exempt.
+
+## v0.2.1 - 2026-08-08
+
+### Added
+- Minecraft Bedrock 1.26.40 support (gophertunnel v1.58.0, oomph-ac/dragonfly fork commit `c1faf42`).
+
+### Changed
+- Migrated to the gophertunnel v1.58.0 protocol API:
+  - `PlayerList` now carries a per-entry `ActionType` (`protocol.PlayerListActionAdd/Remove`) instead of a packet-level field.
+  - `protocol.Recipe` removed; `CraftingData` now exposes typed recipe slices (`ShapedRecipes`, `ShapelessRecipes`, `MultiRecipes`, `SmithingTransformRecipes`, `SmithingTrimRecipes`) — recipe map retyped to `map[uint32]any`.
+  - `LevelChunk` sub-chunk request mode constants removed; limited chunks now indicated by an optional `SubChunkLimit`.
+  - `PlayerAuthInput` `ItemStackRequest`, `BlockActions`, `ItemInteractionData`, and inventory action `WindowID` are now `protocol.Optional[...]` (unwrap with `.Value()`).
+  - `MoveActorDeltaFlagTeleport` renamed to `MoveFlagTeleport` (`packet.MoveFlagTeleport`).
+  - `DefaultItemDescriptor` now keyed by `Name`/`MetadataValue` (no `NetworkID`) — recipe ingredient lookup switched to `world.ItemByName`.
+  - `internal/nbtconv.Item` removed in the dragonfly fork — `utils.ReadItem` and `player.ConvertToStack` now use the public `item.ReadNBT`.
+- Updated `example/default`, `example/dragonfly`, and `deps/proxy` modules to gophertunnel v1.58.0 and the new dragonfly fork commit.
+
+### Fixed
+- Players are no longer kicked on join for benign conditions:
+  - Cache-enabled `LevelChunk`/`SubChunk` packets are skipped (logged) instead of disconnecting with "Chunk cache is not supported."
+  - Chunk decode failures skip the chunk instead of disconnecting.
+  - Unknown device OS/title ID combinations in EditionFakerA only log instead of disconnecting.
+  - ACK flush with no pending batch and unhandled movement packets log instead of disconnecting.
+
+### Tuned (more lenient on legitimate players)
+- 15-second punishment grace period after joining (`GraceTick`).
+- Doubled the violation threshold for every detection (config `max_violations` is now effectively `x2`).
+- Halved the fail-buffer accumulation rate — detections need roughly twice as many flagged inputs before counting a violation.
+- Raised default `max_violations` and switched instant-kick checks from `ban` to `kick` in the default config (BadPacket A-G, EditionFaker A-C, InvMove, Nuker, Scaffold, Proxy B, Killaura, etc.).
+
+### Added
+- Creative-mode logic: players in creative (or creative-spectator) are exempt from checks that only apply to survival gameplay — Speed, Timer, Phase, Scaffold, Nuker, InvMove, Reach, Killaura, Hitbox, Autoclicker, Aim. The exemption is dynamic: it follows the player's current game mode mid-session (`player.IsCreative()` / `creativeExemptChecks` in `player/detection.go`). Packet-integrity checks (BadPacket) and device checks (EditionFaker) still apply in creative.
+- Increased fail buffers on all checks so isolated/random flags cannot produce violations: BadPacket A-I/K/O-T, EditionFaker A-C, InvMove, Nuker, Scaffold now need ~4 flagged inputs per violation (FailBuffer 2/MaxBuffer 3); BadPacket J/L/N/Q and Speed/Phase (3/5); Timer (4/6); Reach (3/5); Killaura (2/3); Hitbox (8/10); Autoclicker (6/8); Aim (8/10).
+
 ## v0.2.0 - 2026-08-08
 
 Second public release.
