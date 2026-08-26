@@ -1,70 +1,42 @@
 # Changelog
 
-## v0.2.2 - 2026-08-08
-
-### Changed
-- BadPacket checks (A-U) are no longer registered: they repeatedly false-flagged legitimate clients
-  (e.g. BadPacket L flagged the vanilla per-tick gravity delta `-0.0784` as a violation, and BadPacket A
-  punished on benign simulation-frame resets). The checks remain implemented and can be re-enabled in
-  `player/detection/register.go`.
-
-### Added
-- Scaffold B — detects fast diagonal/extended block placements beyond the vanilla interaction distance
-  (scaffold modules with an "extend" setting). Placed-block distance is measured from the player's eye,
-  mirroring the proxy's own interaction-distance check; anything past 7.5 blocks is flagged. Creative
-  players are exempt.
-
-## v0.2.1 - 2026-08-08
-
-### Added
-- Minecraft Bedrock 1.26.40 support (gophertunnel v1.58.0, oomph-ac/dragonfly fork commit `c1faf42`).
-
-### Changed
-- Migrated to the gophertunnel v1.58.0 protocol API:
-  - `PlayerList` now carries a per-entry `ActionType` (`protocol.PlayerListActionAdd/Remove`) instead of a packet-level field.
-  - `protocol.Recipe` removed; `CraftingData` now exposes typed recipe slices (`ShapedRecipes`, `ShapelessRecipes`, `MultiRecipes`, `SmithingTransformRecipes`, `SmithingTrimRecipes`) — recipe map retyped to `map[uint32]any`.
-  - `LevelChunk` sub-chunk request mode constants removed; limited chunks now indicated by an optional `SubChunkLimit`.
-  - `PlayerAuthInput` `ItemStackRequest`, `BlockActions`, `ItemInteractionData`, and inventory action `WindowID` are now `protocol.Optional[...]` (unwrap with `.Value()`).
-  - `MoveActorDeltaFlagTeleport` renamed to `MoveFlagTeleport` (`packet.MoveFlagTeleport`).
-  - `DefaultItemDescriptor` now keyed by `Name`/`MetadataValue` (no `NetworkID`) — recipe ingredient lookup switched to `world.ItemByName`.
-  - `internal/nbtconv.Item` removed in the dragonfly fork — `utils.ReadItem` and `player.ConvertToStack` now use the public `item.ReadNBT`.
-- Updated `example/default`, `example/dragonfly`, and `deps/proxy` modules to gophertunnel v1.58.0 and the new dragonfly fork commit.
+## v2.4.0 - 2026-08-26
 
 ### Fixed
-- Players are no longer kicked on join for benign conditions:
-  - Cache-enabled `LevelChunk`/`SubChunk` packets are skipped (logged) instead of disconnecting with "Chunk cache is not supported."
-  - Chunk decode failures skip the chunk instead of disconnecting.
-  - Unknown device OS/title ID combinations in EditionFakerA only log instead of disconnecting.
-  - ACK flush with no pending batch and unhandled movement packets log instead of disconnecting.
-
-### Tuned (more lenient on legitimate players)
-- 15-second punishment grace period after joining (`GraceTick`).
-- Doubled the violation threshold for every detection (config `max_violations` is now effectively `x2`).
-- Halved the fail-buffer accumulation rate — detections need roughly twice as many flagged inputs before counting a violation.
-- Raised default `max_violations` and switched instant-kick checks from `ban` to `kick` in the default config (BadPacket A-G, EditionFaker A-C, InvMove, Nuker, Scaffold, Proxy B, Killaura, etc.).
+- **BadPacket/L threshold**: Changed from `-0.05` to `-0.0784 * 1.5` (normal gravity is `-0.0784`) to properly account for Bedrock 1.26.x gravity.
+- **BadPacket/O**: Detection fully disabled — `JUMP_DOWN` semantics changed in 1.26.x to mean "key held" instead of "press edge", making the detection impossible to implement correctly.
+- **Nuker/A**: Regressed — vanilla clients break exactly 1 block per tick. Threshold lowered to `> 1` to catch multi-block breaks.
 
 ### Added
-- Creative-mode logic: players in creative (or creative-spectator) are exempt from checks that only apply to survival gameplay — Speed, Timer, Phase, Scaffold, Nuker, InvMove, Reach, Killaura, Hitbox, Autoclicker, Aim. The exemption is dynamic: it follows the player's current game mode mid-session (`player.IsCreative()` / `creativeExemptChecks` in `player/detection.go`). Packet-integrity checks (BadPacket) and device checks (EditionFaker) still apply in creative.
-- Increased fail buffers on all checks so isolated/random flags cannot produce violations: BadPacket A-I/K/O-T, EditionFaker A-C, InvMove, Nuker, Scaffold now need ~4 flagged inputs per violation (FailBuffer 2/MaxBuffer 3); BadPacket J/L/N/Q and Speed/Phase (3/5); Timer (4/6); Reach (3/5); Killaura (2/3); Hitbox (8/10); Autoclicker (6/8); Aim (8/10).
+- **NoSlowdown/A**: Detects players moving at full speed while using items (bow, food, shield, crossbow, etc). Tracks `StartUsingItem` with a 20-tick state timer and applies the vanilla 0.4x slowdown factor to max speed.
+- **Blink/A**: Detects packet freezing / movement desync. Measures 250ms+ gaps between `PlayerAuthInput` packets and checks if post-freeze movement exceeds expected distance.
+- **Kick codes (Flareon-style)**: Each detection now sends a short kick code on punishment instead of a generic message. Codes: `Abagnale`, `Bluebird`, `Platinumo`, `SugarRush`, `CIA`, `Woodpecker`, `400`, `403`, `405`, `Proxy`.
+- **KickCode config field**: Detection config now accepts a `kick_code` JSON field.
 
-## v0.2.0 - 2026-08-08
-
-Second public release.
+## v2.3.0 - 2026-08-25
 
 ### Fixed
-- BadPacket P (glide start): no longer false-positives on a legitimate jump-then-glide input (same-tick jump flags are now excluded).
-- BadPacket Q (terminal velocity): added a 0.01 block/tick tolerance to the fall-cap so float32 gravity accumulation on vanilla fall speeds cannot false-positive.
-- BadPacket N (unauthorized teleports): the position baseline now rebases after a violation so a single injected position cannot produce an endless violation chain.
-- BadPacket M: replaced the `InputMode == 0` "uninitialized" sentinel with an explicit flag since input mode 0 (unknown) is a legitimate device value.
-- All checks gofmt- and golangci-lint-clean (0 issues).
+- **Item duplication via inventory transfers**: `transferAction.execute()` now validates `count <= available` before writing the source slot. The `Inventory.SetSlot` path does not clamp counts, so an oversized client-supplied count would write a negative-count stack into the source slot (item duplication in the predicted inventory).
+- **Inventory slot out-of-bounds panic**: `TakeStack`, `PlaceStack`, `SwapStack`, `DestroyStack`, and `Drop` handlers now validate slot indices against the target inventory size before constructing actions. Previously a malformed packet with a slot byte (0–255) exceeding a 36/54/4/1-slot inventory would panic inside `Slot()` / `SetSlot()`.
+- **`WithPacketCtx` nil-check inversion**: the wrapper called `f(nil)` when a packet context was present and ignored it otherwise. Fixed the logic so the context is passed when non-nil and nil is passed when absent.
+- **`Close()` double-close on non-replay connections**: `p.conn` and `serverConn` were closed in both the `!IsReplay` block and the general cleanup block, producing a second `Close` call on already-closed net.Conn values. Removed the duplicate close.
+- **`Tick()` inflated server tick count**: `delta > 50` (with a 50ms ticker) meant 1ms of scheduling jitter counted as a second tick, inflating `ServerTick` over time and allowing movement input allowance to drift. Now only genuine stalls ≥ 100ms are compensated (`delta / 50`).
 
 ### Added
-- New checks:
-  - BadPacket R — sprint start/stop edge flags in a single input (sprint spam, "Always Sprint" disablers).
-  - BadPacket S — sneak start/stop edge flags in a single input (sneak-desync togglers).
-  - BadPacket T — flying start/stop edge flags in a single input (flight togglers).
-  - BadPacket U — crawling start/stop edge flags in a single input (crawl bots).
-- `build` and `release` targets to the Makefile.
+- Bounds-guard tests covering slot out-of-bounds (all action types), count-overflow transfer, WithPacketCtx nil handling, Close double-close, and Tick jitter scenarios: `player/detection/regression_test.go` (expanded).
+
+## v2.2.0 - 2026-08-19
+
+### Fixed
+- Detections now actually run in creative mode: creative attacks are fed to the client combat component (reach/hitbox checks), and the gamemode bypass in combat calculation no longer skips distance hooks. Attack packets are still forwarded untouched in creative.
+- Client tracker no longer ignores non-player entities, so end-crystal attacks are validated.
+- Timer A now sees rate-limited PlayerAuthInputs, so input flooding above the tick rate is flagged instead of being swallowed by the rate limiter.
+- Reach A/B use the vanilla creative reach limit (5 blocks) instead of the survival limit.
+- Nuker A now flags bursts of more than 3 block-breaking actions per tick (8-block nukers), regardless of gamemode.
+- Nuker A and Scaffold A are now registered.
+
+### Added
+- Regression tests covering killaura, reach (players and end crystals, survival and creative), nuker bursts, scaffold registration, and timer flooding: `player/detection/regression_test.go`.
 
 ## v0.1.2 - 2026-08-08
 
@@ -88,5 +60,4 @@ First public release.
 | InvMove A | inventory | Moving while moving items in the inventory |
 | EditionFaker A/B/C | misc | Faked device OS or invalid input mode for the device |
 | BadPacket A-O, P, Q | packet | Invalid simulation frames, self-hits, invalid block breaking, creative transactions without creative mode, invalid MoveVectors, invalid hotbar slots, unmatched acknowledgment timestamps (NSL tampering / ping spoof), non-finite or world-border positions, backwards client ticks (tick shifters), contradictory spin/swim flags, downward velocity with ground collision (gravity-delta spoof), input-mode randomization, un-authorized teleports, contradictory jump flags, forced glide flags, vertical velocity above the terminal velocity |
-| BadPacket R-U | packet | Sprint, sneak, flying, and crawl start/stop edge flags in a single input, which is only possible when a client forces a state toggle rather than reporting it (sprint/sneak spam, flight toggler, crawl bots) |
 - `asset` combat flow diagram, `oconfig` JSON configuration, standalone `deps/proxy` module.
