@@ -124,7 +124,9 @@ func (p *Player) HandleClientPacket(ctx *context.HandlePacketContext) {
 		p.acks.Tick(true)
 
 		if pk.InputData.Load(packet.InputFlagPerformItemStackRequest) {
-			p.inventory.HandleSingleRequest(pk.ItemStackRequest)
+			if req, ok := pk.ItemStackRequest.Value(); ok {
+				p.inventory.HandleSingleRequest(req)
+			}
 		}
 
 		p.handleBlockActions(pk)
@@ -237,9 +239,11 @@ func (p *Player) HandleClientPacket(ctx *context.HandlePacketContext) {
 			for _, action := range pk.Actions {
 				if action.SourceType == protocol.InventoryActionSourceWorld && action.InventorySlot == 0 {
 					droppedCount = int(action.NewItem.Stack.Count)
-				} else if action.SourceType == protocol.InventoryActionSourceContainer && action.WindowID == protocol.WindowIDInventory {
-					sourceSlot = int(action.InventorySlot)
-					foundClientItemStack = true
+				} else if action.SourceType == protocol.InventoryActionSourceContainer {
+					if wid, ok := action.WindowID.Value(); ok && wid == protocol.WindowIDInventory {
+						sourceSlot = int(action.InventorySlot)
+						foundClientItemStack = true
+					}
 				}
 			}
 
@@ -412,7 +416,7 @@ func (p *Player) HandleServerPacket(ctx *context.HandlePacketContext) {
 		p.inventory.HandleItemStackResponse(pk)
 	case *packet.LevelChunk:
 		p.worldUpdater.HandleLevelChunk(pk)
-		fullChunk := !pk.CacheEnabled && pk.SubChunkCount != protocol.SubChunkRequestModeLimited && pk.SubChunkCount != protocol.SubChunkRequestModeLimitless
+		fullChunk := !pk.CacheEnabled && pk.SubChunkCount == 0
 		if fullChunk && p.opts.Network.AttemptFixChunks {
 			if err := oworld.ReencodeLevelChunk(pk, p.BlockNetwork()); err != nil {
 				p.Log().Warn("unable to re-encode chunk", "error", err)
@@ -492,21 +496,22 @@ func (p *Player) HandleServerPacket(ctx *context.HandlePacketContext) {
 		p.inventory.RemoveWindow(pk.WindowID)
 	case *packet.CraftingData:
 		if pk.ClearRecipes {
-			p.Recipies = make(map[uint32]protocol.Recipe)
+			p.Recipies = make(map[uint32]any)
 		}
-		for _, recp := range pk.Recipes {
-			switch recp := recp.(type) {
-			case *protocol.ShapedRecipe:
-				p.Recipies[recp.RecipeNetworkID] = recp
-			case *protocol.ShapelessRecipe:
-				p.Recipies[recp.RecipeNetworkID] = recp
-			case *protocol.MultiRecipe:
-				p.Recipies[recp.RecipeNetworkID] = recp
-			case *protocol.SmithingTransformRecipe:
-				p.Recipies[recp.RecipeNetworkID] = recp
-			case *protocol.SmithingTrimRecipe:
-				p.Recipies[recp.RecipeNetworkID] = recp
-			}
+		for _, recp := range pk.ShapedRecipes {
+			p.Recipies[recp.RecipeNetworkID] = &recp
+		}
+		for _, recp := range pk.ShapelessRecipes {
+			p.Recipies[recp.RecipeNetworkID] = &recp
+		}
+		for _, recp := range pk.MultiRecipes {
+			p.Recipies[recp.RecipeNetworkID] = &recp
+		}
+		for _, recp := range pk.SmithingTransformRecipes {
+			p.Recipies[recp.RecipeNetworkID] = &recp
+		}
+		for _, recp := range pk.SmithingTrimRecipes {
+			p.Recipies[recp.RecipeNetworkID] = &recp
 		}
 	case *packet.CreativeContent:
 		p.CreativeItems = make(map[uint32]protocol.CreativeItem)

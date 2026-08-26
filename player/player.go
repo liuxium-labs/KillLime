@@ -26,29 +26,7 @@ import (
 )
 
 const (
-	GameVersion1_20_0  = 589
-	GameVersion1_20_10 = 594
-	GameVersion1_20_30 = 618
-	GameVersion1_20_40 = 622
-	GameVersion1_20_50 = 630
-	GameVersion1_20_60 = 649
-	GameVersion1_20_70 = 662
-	GameVersion1_20_80 = 671
-
-	GameVersion1_21_0   = 685
-	GameVersion1_21_2   = 686
-	GameVersion1_21_20  = 712
-	GameVersion1_21_30  = 729
-	GameVersion1_21_40  = 748
-	GameVersion1_21_50  = 766
-	GameVersion1_21_60  = 776
-	GameVersion1_21_70  = 786
-	GameVersion1_21_80  = 800
-	GameVersion1_21_90  = 818
-	GameVersion1_21_93  = 819
-	GameVersion1_21_100 = 827
-	GameVersion1_21_111 = 844
-	GameVersion1_21_120 = 859
+	GameVersion1_26_40 = 2168
 
 	TicksPerSecond = 20
 )
@@ -102,6 +80,11 @@ type Player struct {
 	// GameMode is the gamemode of the player. The player is exempt from movement predictions
 	// if they are not in survival or adventure mode.
 	GameMode int32
+	// PendingGameMode is the gamemode the server last instructed the client to switch to. It
+	// is set when the SetPlayerGameType packet is queued and cleared once the client
+	// acknowledges the change. GameMode only reflects the acknowledged value, so checks that
+	// run while a gamemode change is in flight must not treat the old value as final.
+	PendingGameMode int32
 	// InputMode is the input mode of the player.
 	InputMode uint32
 
@@ -112,7 +95,7 @@ type Player struct {
 	LastSetActorData *packet.SetActorData
 
 	// Recipies is a map of recipe network IDs to recipes.
-	Recipies map[uint32]protocol.Recipe
+	Recipies map[uint32]any
 	// CreativeItems is a map of creative item network IDs to creative items.
 	CreativeItems map[uint32]protocol.CreativeItem
 
@@ -236,10 +219,14 @@ func New(log *slog.Logger, mState MonitoringState, listener *minecraft.Listener)
 		LastServerTick:  time.Now(),
 		Tps:             20.0,
 
+		// -1 means no gamemode change is in flight. The zero value (survival)
+		// is a real gamemode and must not be mistaken for "no pending change".
+		PendingGameMode: -1,
+
 		CloseChan: make(chan bool),
 		RunChan:   make(chan func(), 32),
 
-		Recipies:      make(map[uint32]protocol.Recipe),
+		Recipies:      make(map[uint32]any),
 		CreativeItems: make(map[uint32]protocol.CreativeItem),
 
 		deferredPackets: make([]packet.Packet, 0, 256),
@@ -289,7 +276,7 @@ func (p *Player) SetRemoteEventFunc(f func(e RemoteEvent, p *Player)) {
 }
 
 func (p *Player) WithPacketCtx(f func(*context.HandlePacketContext)) {
-	if p.pkCtx == nil {
+	if p.pkCtx != nil {
 		f(p.pkCtx)
 	}
 }
@@ -465,14 +452,6 @@ func (p *Player) BlockAddress(duration time.Duration) {
 	}
 }
 
-func (p *Player) IsVersion(ver int32) bool {
-	return p.Version == ver
-}
-
-func (p *Player) VersionInRange(oldest, latest int32) bool {
-	return p.Version >= oldest && p.Version <= latest
-}
-
 func (p *Player) SetCloser(closer func()) {
 	// If the player is already closed, we should not set the closer.
 	if p.Closed {
@@ -489,20 +468,12 @@ func (p *Player) Close() error {
 			p.procMu.Lock()
 			defer p.procMu.Unlock()
 
-			if evHandler := p.eventHandler; evHandler != nil {
-				evHandler.HandleQuit(event.C(p))
-			}
-			if !p.MState.IsReplay {
-				if c := p.conn; c != nil {
-					c.Close()
-				}
-				if c := p.serverConn; c != nil {
-					c.Close()
-				}
-			}
+		if evHandler := p.eventHandler; evHandler != nil {
+			evHandler.HandleQuit(event.C(p))
+		}
 
-			p.log = nil
-			if conn := p.conn; conn != nil {
+		p.log = nil
+		if conn := p.conn; conn != nil {
 				p.conn.Close()
 				p.conn = nil
 			}
@@ -554,8 +525,12 @@ func (p *Player) Tick() bool {
 	p.LastServerTick = p.Time()
 
 	prevTick := p.ServerTick
-	if delta > 50 {
-		p.ServerTick += (delta / 50) + 1
+	// The tick loop targets 50ms per tick. Any jitter past the boundary
+	// (e.g. 51ms) must not count as two ticks, or ServerTick (and everything
+	// scaled by it, like the movement input allowance) inflates over time.
+	// Only genuine stalls of a full extra tick or more are compensated.
+	if delta >= 100 {
+		p.ServerTick += delta / 50
 	} else {
 		p.ServerTick++
 	}
@@ -575,8 +550,10 @@ func (p *Player) Tick() bool {
 	}
 
 	if !p.MState.IsReplay {
-		if err := p.conn.Flush(); err != nil {
-			return false
+		if p.conn != nil {
+			if err := p.conn.Flush(); err != nil {
+				return false
+			}
 		}
 		if srvConn, ok := p.serverConn.(*minecraft.Conn); ok {
 			if err := srvConn.Flush(); err != nil {

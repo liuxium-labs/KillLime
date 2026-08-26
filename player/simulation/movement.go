@@ -37,21 +37,31 @@ func SimulatePlayerMovement(p *player.Player, movement player.MovementComponent)
 	// is "unreliable", or if the player currently is in an unloaded chunk.
 	if attemptTeleport(p, p.Dbg) {
 		p.Dbg.Notify(player.DebugModeMovementSim, true, "teleport (newPos=%v)", movement.Pos())
+		movement.SetPenetratedLastFrame(false)
+		movement.SetStuckInCollider(false)
 		return
 	}
 
 	if !simulationIsReliable(p, movement) {
 		p.Dbg.Notify(player.DebugModeMovementSim, true, "no movement sim for frame %d: unsupported scenario", p.SimulationFrame)
+		// Penetration is a property of this frame's simulation only; stale
+		// values from a previous frame must not survive frames that skip it.
+		movement.SetPenetratedLastFrame(false)
+		movement.SetStuckInCollider(false)
 		movement.Reset()
 		return
 	} else if p.World().Chunk(protocol.ChunkPos{int32(movement.Pos().X()) >> 4, int32(movement.Pos().Z()) >> 4}) == nil {
 		p.Dbg.Notify(player.DebugModeMovementSim, true, "no movement sim for frame %d: in unloaded chunk, cancelling all movement", p.SimulationFrame)
+		movement.SetPenetratedLastFrame(false)
+		movement.SetStuckInCollider(false)
 		movement.SetVel(mgl32.Vec3{})
 		return
 	}
 
 	if movement.Immobile() || !p.Ready {
 		p.Dbg.Notify(player.DebugModeMovementSim, true, "player is immobile")
+		movement.SetPenetratedLastFrame(false)
+		movement.SetStuckInCollider(false)
 		movement.SetVel(mgl32.Vec3{})
 		return
 	}
@@ -135,7 +145,7 @@ func SimulatePlayerMovement(p *player.Player, movement player.MovementComponent)
 	oldOnGround := movement.OnGround()
 	oldY := movement.Pos().Y()
 
-	tryCollisions(p, p.World(), p.Dbg, p.VersionInRange(-1, player.GameVersion1_20_60), clientJumpPrevented)
+	tryCollisions(p, p.World(), p.Dbg, clientJumpPrevented)
 	if supportPos := movement.SupportingBlockPos(); supportPos != nil {
 		blockUnder = p.World().Block([3]int(*supportPos))
 	} else {
@@ -235,7 +245,7 @@ func simulateGlide(p *player.Player, movement player.MovementComponent) {
 	movement.SetVel(vel)
 
 	oldVel := vel
-	tryCollisions(p, p.World(), p.Dbg, p.VersionInRange(-1, player.GameVersion1_20_60), false)
+	tryCollisions(p, p.World(), p.Dbg, false)
 	velDiff := movement.Vel().Sub(movement.Client().Vel())
 	p.Dbg.Notify(player.DebugModeMovementSim, true, "(glide) oldVel=%v, collisions=%v diff=%v", oldVel, movement.Vel(), velDiff)
 }
@@ -379,9 +389,7 @@ func isJumpBlocked(p *player.Player, jumpVel mgl32.Vec3) bool {
 	return yVel[1] != jumpVel[1] && xVel[0] == jumpVel[0] && zVel[2] == jumpVel[2]
 }
 
-func tryCollisions(p *player.Player, src world.BlockSource, dbg *player.Debugger, useSlideOffset bool, clientJumpPrevented bool) {
-	var completedStep bool
-
+func tryCollisions(p *player.Player, src world.BlockSource, dbg *player.Debugger, clientJumpPrevented bool) {
 	movement := p.Movement()
 	collisionBB := movement.BoundingBox()
 	currVel := movement.Vel()
@@ -500,13 +508,8 @@ func tryCollisions(p *player.Player, src world.BlockSource, dbg *player.Debugger
 				collisionVel = stepVel
 				collisionBB = stepBB
 
-				// This sliding offset is only used in versions 1.20.60 and below. On newer versions of the game, this sliding offset is no longer used.
-				if useSlideOffset {
-					completedStep = true
-					slideOffset := movement.SlideOffset().Mul(game.SlideOffsetMultiplier)
-					slideOffset[1] += stepVel.Y()
-					movement.SetSlideOffset(slideOffset)
-				}
+				// The sliding offset mechanic was only used in versions 1.20.60
+				// and below; KillLime targets 1.26.40+ where it no longer exists.
 				dbg.Notify(player.DebugModeMovementSim, true, "step successful")
 			} else {
 				dbg.Notify(player.DebugModeMovementSim, true, "step failed (client rejection) [clientPos=%v collisionPos=%v stepPos=%v]", movement.Client().Pos(), collisionPos, stepPos)
@@ -525,19 +528,6 @@ func tryCollisions(p *player.Player, src world.BlockSource, dbg *player.Debugger
 		(collisionBB.Min().Z() + collisionBB.Max().Z()) * 0.5,
 	}
 
-	// useSlideOffset is true for any version that is below 1.20.70. For some reason, it seems that for versions above 1.20.60, the
-	// slide offset is no longer used (confirmed via. testing w/ it).
-	if useSlideOffset {
-		if completedStep {
-			// We don't add a debug message here, as it should already be noted in the statement where stepHeight is set
-			endPos[1] -= movement.SlideOffset().Y()
-			dbg.Notify(player.DebugModeMovementSim, true, "applying slideOffset, able to subtract endPos.y this frame by %f", movement.SlideOffset().Y())
-		} else {
-			// If there was no step done this tick, we can be certain that
-			dbg.Notify(player.DebugModeMovementSim, true, "using slide offset, RESETTING slide offset vector")
-			movement.SetSlideOffset(mgl32.Vec2{})
-		}
-	}
 	movement.SetPos(endPos)
 
 	yCollision = math32.Abs(currVel.Y()-collisionVel.Y()) >= 1e-5
