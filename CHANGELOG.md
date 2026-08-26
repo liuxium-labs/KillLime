@@ -1,6 +1,6 @@
 # Changelog
 
-## v2.4.0 - 2026-08-26
+## v2.3.0 - 2026-08-26
 
 ### Fixed
 - **BadPacket/L threshold**: Changed from `-0.05` to `-0.0784 * 1.5` (normal gravity is `-0.0784`) to properly account for Bedrock 1.26.x gravity.
