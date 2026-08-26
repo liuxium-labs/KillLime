@@ -2,7 +2,9 @@ package detection
 
 import (
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/killlime/killlime/game"
 	"github.com/killlime/killlime/player"
+	"github.com/killlime/killlime/utils"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -43,24 +45,65 @@ func (d *SpeedA) Metadata() *player.DetectionMetadata {
 }
 
 func (d *SpeedA) Detect(pk packet.Packet) {
-	_, ok := pk.(*packet.PlayerAuthInput)
+	i, ok := pk.(*packet.PlayerAuthInput)
 	if !ok {
 		return
 	}
 
-	// Only check when the player is on the ground and not in a state where
-	// additional movement speed is expected.
-	if !d.mPlayer.Movement().OnGround() || d.mPlayer.Movement().Flying() || d.mPlayer.Movement().Gliding() ||
-		d.mPlayer.Movement().Immobile() || d.mPlayer.Movement().NoClip() || d.mPlayer.Movement().HasTeleport() ||
-		d.mPlayer.Movement().HasKnockback() || d.mPlayer.Movement().PenetratedLastFrame() || d.mPlayer.Movement().StuckInCollider() {
+	// Detections also run for rate-limited inputs that never reach the
+	// movement simulation, so only trust the movement state on inputs that
+	// were actually simulated this frame.
+	if i.Tick != d.mPlayer.SimulationFrame {
 		d.mPlayer.PassDetection(d, 0.5)
 		return
 	}
 
-	// The maximum speed a player can reach on the ground. When sprinting, the
-	// movement speed is multiplied by 1.3. Give a small buffer to account for
-	// slopes and client-side movement smoothing.
-	maxSpeed := d.mPlayer.Movement().MovementSpeed() * 1.3
+	// Only check when the player is on the ground and not in a state where
+	// additional movement speed is expected. HasKnockback/HasTeleport are
+	// consumed by the simulation before detections run, so the tick counters
+	// are used to exempt the frames where a server-applied velocity is still
+	// actively decaying.
+	if !d.mPlayer.Movement().OnGround() || d.mPlayer.Movement().Flying() || d.mPlayer.Movement().Gliding() ||
+		d.mPlayer.Movement().Immobile() || d.mPlayer.Movement().NoClip() || d.mPlayer.Movement().JustDisabledFlight() ||
+		d.mPlayer.Movement().HasTeleport() || d.mPlayer.Movement().PendingTeleports() > 0 ||
+		d.mPlayer.Movement().TicksSinceTeleport() <= 1 || d.mPlayer.Movement().TicksSinceKnockback() <= 1 ||
+		d.mPlayer.Movement().PenetratedLastFrame() || d.mPlayer.Movement().StuckInCollider() {
+		d.mPlayer.PassDetection(d, 0.5)
+		return
+	}
+
+	// A player riding an entity moves at the vehicle's velocity, which is not
+	// bound by the player's movement speed.
+	if _, hasVehicle := i.ClientPredictedVehicle.Value(); hasVehicle {
+		d.mPlayer.PassDetection(d, 0.5)
+		return
+	}
+
+	// Compute the maximum sustained ground speed using the same physics the
+	// proxy's own simulation uses. Every tick the simulation first adds
+	// moveRelative = movementSpeed * (0.16277136 / friction^3) to the
+	// velocity and moves the entity by the resulting velocity, then multiplies
+	// the velocity by the block friction. At equilibrium the per-tick position
+	// delta is therefore moveRelative / (1 - friction) (the friction applied
+	// to the stored velocity must not be applied to the equilibrium again).
+	// The friction of the standing block must be accounted for, or
+	// legitimate sprinting on ice/blue ice false flags. MovementSpeed()
+	// already includes the 1.3 sprint multiplier, so it must not be applied
+	// again here.
+	friction := game.DefaultAirFriction * game.DefaultBlockFriction
+	speed := d.mPlayer.Movement().MovementSpeed()
+	if support := d.mPlayer.Movement().SupportingBlockPos(); support != nil {
+		block := d.mPlayer.World().Block([3]int(*support))
+		if utils.BlockName(block) == "minecraft:soul_sand" {
+			speed *= 0.543
+		}
+		friction = game.DefaultAirFriction * utils.BlockFriction(block)
+	}
+	moveRelativeSpeed := speed * (0.16277136 / (friction * friction * friction))
+	maxSpeed := moveRelativeSpeed / (1 - friction)
+
+	// Give a small buffer to account for slopes and client-side movement
+	// smoothing.
 	buffer := float32(0.06)
 
 	clientVel := d.mPlayer.Movement().Client().Vel()

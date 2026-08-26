@@ -329,11 +329,11 @@ func (c *InventoryComponent) handleCraftStackRequest(tx *invReq, action *protoco
 		for index, desc := range recp.Input {
 			switch d := desc.Descriptor.(type) {
 			case *protocol.DefaultItemDescriptor:
-				if i, ok := world.ItemByRuntimeID(int32(d.NetworkID), d.MetadataValue); ok {
+				if i, ok := world.ItemByName(d.Name, int16(d.MetadataValue)); ok {
 					c.mPlayer.Dbg.Notify(player.DebugModeCrafting, true, "item found %T for index %d", i, index)
 					recpInput[index] = item.NewStack(i, int(desc.Count))
 				} else {
-					c.mPlayer.Dbg.Notify(player.DebugModeCrafting, true, "no item found %d %d (index %d)", d.NetworkID, d.MetadataValue, index)
+					c.mPlayer.Dbg.Notify(player.DebugModeCrafting, true, "no item found %s %d (index %d)", d.Name, d.MetadataValue, index)
 				}
 			case *protocol.ItemTagItemDescriptor:
 				c.mPlayer.Dbg.Notify(player.DebugModeCrafting, true, "item tag found %s for index %d", d.Tag, index)
@@ -350,11 +350,11 @@ func (c *InventoryComponent) handleCraftStackRequest(tx *invReq, action *protoco
 		for index, desc := range recp.Input {
 			switch d := desc.Descriptor.(type) {
 			case *protocol.DefaultItemDescriptor:
-				if i, ok := world.ItemByRuntimeID(int32(d.NetworkID), d.MetadataValue); ok {
+				if i, ok := world.ItemByName(d.Name, int16(d.MetadataValue)); ok {
 					c.mPlayer.Dbg.Notify(player.DebugModeCrafting, true, "item found %T for index %d", i, index)
 					recpInput[index] = item.NewStack(i, int(desc.Count))
 				} else {
-					c.mPlayer.Dbg.Notify(player.DebugModeCrafting, true, "no item found %d %d (index %d)", d.NetworkID, d.MetadataValue, index)
+					c.mPlayer.Dbg.Notify(player.DebugModeCrafting, true, "no item found %s %d (index %d)", d.Name, d.MetadataValue, index)
 				}
 			case *protocol.ItemTagItemDescriptor:
 				recpInput[index] = recipe.NewItemTag(d.Tag, int(desc.Count))
@@ -456,6 +456,11 @@ func (c *InventoryComponent) handleTransferRequest(tx *invReq, src, dst protocol
 		return
 	}
 
+	if int(src.Slot) >= int(srcInv.Size()) || int(dst.Slot) >= int(dstInv.Size()) {
+		c.mPlayer.Dbg.Notify(player.DebugModeItemRequests, true, "transfer request with out of bounds slot (src=%d dst=%d)", src.Slot, dst.Slot)
+		return
+	}
+
 	tx.append(newInvTransferAction(
 		count,
 		int32(src.Container.ContainerID),
@@ -481,6 +486,11 @@ func (c *InventoryComponent) handleSwapRequest(tx *invReq, action *protocol.Swap
 		return
 	}
 
+	if int(action.Source.Slot) >= int(srcInv.Size()) || int(action.Destination.Slot) >= int(dstInv.Size()) {
+		c.mPlayer.Dbg.Notify(player.DebugModeItemRequests, true, "swap request with out of bounds slot (src=%d dst=%d)", action.Source.Slot, action.Destination.Slot)
+		return
+	}
+
 	tx.append(newInvSwapAction(
 		int32(action.Source.Container.ContainerID),
 		srcInv.Slot(int(action.Source.Slot)),
@@ -496,6 +506,10 @@ func (c *InventoryComponent) handleDestroyRequest(tx *invReq, src protocol.Stack
 	inv, foundInv := c.WindowFromContainerID(int32(src.Container.ContainerID))
 	if !foundInv {
 		c.mPlayer.Dbg.Notify(player.DebugModeItemRequests, true, "no inventory with container id %d found", src.Container.ContainerID)
+		return
+	}
+	if int(src.Slot) >= int(inv.Size()) {
+		c.mPlayer.Dbg.Notify(player.DebugModeItemRequests, true, "destroy request with out of bounds slot %d", src.Slot)
 		return
 	}
 	tx.append(newDestroyAction(

@@ -44,9 +44,7 @@ func (c *ClicksComponent) HandleSwing() {
 }
 
 func (c *ClicksComponent) HandleRight(dat *protocol.UseItemTransactionData) {
-	// On versions before 1.21.20, we cannot determine if the right click action was caused by a player input or due to MCBE's assisted simulation actions.
-	// This isn't much of a problem for KillLime specifically - as it *officially* supports 1.21.20+
-	if !c.mPlayer.VersionInRange(player.GameVersion1_21_20, protocol.CurrentProtocol) || dat.TriggerType != protocol.TriggerTypePlayerInput {
+	if dat.TriggerType != protocol.TriggerTypePlayerInput {
 		return
 	}
 	c.clickRight()

@@ -19,4 +19,5 @@ func NewUpdateGamemodeACK(p *player.Player, gamemode int32) *UpdateGamemode {
 
 func (ack *UpdateGamemode) Run() {
 	ack.mPlayer.GameMode = ack.gamemode
+	ack.mPlayer.PendingGameMode = -1
 }

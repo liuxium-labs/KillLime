@@ -1,5 +1,6 @@
 package player
 
+// eeeeeeee
 import (
 	"fmt"
 	"math"
@@ -102,6 +103,12 @@ func (p *Player) FailDetection(d Detection, extraData ...any) {
 	if !oconfig.Global.UseLegacyEvents && d.Punishable() && m.Violations >= m.MaxViolations {
 		ctx = event.C(p)
 		message := DefaultDetectionDisconnectMessage
+
+		dtcCfg := oconfig.DtcOpts(d.Type() + "_" + d.SubType())
+		if dtcCfg.KickCode != "" {
+			message = text.Colourf("<bold><red>Kick code: %s</red></bold>", dtcCfg.KickCode)
+		}
+
 		p.EventHandler().HandlePunishment(ctx, d, &message)
 		if ctx.Cancelled() {
 			return

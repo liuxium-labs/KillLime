@@ -8,26 +8,16 @@ import (
 )
 
 func (p *Player) initKillLimeCommand(pk *packet.AvailableCommands) {
-	// Don't bother registering the command if the player has no permissions.
 	if p.perms == 0 {
 		return
 	}
-
-	overloads := []protocol.CommandOverload{}
-	for _, fns := range command.SubCommands() {
-		for _, fn := range fns {
-			if subCmd := fn(p, pk); subCmd != nil {
-				overloads = append(overloads, *subCmd)
-			}
-		}
-	}
-
+	overloads := command.AllOverloads(p, pk)
 	pk.Commands = append(pk.Commands, protocol.Command{
 		Name:                     oconfig.Global.CommandName,
 		Description:              oconfig.Global.CommandDescription,
 		Flags:                    0,
 		PermissionLevel:          0,
-		AliasesOffset:            ^uint32(0), // MaxUint32 (no aliases)
+		AliasesOffset:            ^uint32(0),
 		ChainedSubcommandOffsets: []uint32{},
 		Overloads:                overloads,
 	})

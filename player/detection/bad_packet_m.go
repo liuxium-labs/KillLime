@@ -10,6 +10,7 @@ type BadPacketM struct {
 	metadata *player.DetectionMetadata
 
 	lastInputMode uint32
+	hasLastMode   bool
 }
 
 func New_BadPacketM(p *player.Player) *BadPacketM {
@@ -49,7 +50,12 @@ func (d *BadPacketM) Detect(pk packet.Packet) {
 		return
 	}
 
-	if d.lastInputMode == 0 {
+	// InputMode 0 is a valid value sent by some devices, so a boolean flag
+	// (rather than a 0 sentinel) is required: otherwise a client that reports
+	// mode 0 would re-seed the baseline on every packet and permanently
+	// bypass this check.
+	if !d.hasLastMode {
+		d.hasLastMode = true
 		d.lastInputMode = i.InputMode
 		return
 	}

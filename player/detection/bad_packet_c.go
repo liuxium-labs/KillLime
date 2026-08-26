@@ -49,6 +49,8 @@ func (d *BadPacketC) Detect(pk packet.Packet) {
 			d.mPlayer.FailDetection(d)
 		}
 	case *packet.PlayerAction:
+		// Since 1.21.20+ block breaking moved into PlayerAuthInput
+		// BlockActions field; any PlayerAction break packet on 1.26.40+ is invalid.
 		switch pk.ActionType {
 		case protocol.PlayerActionPredictDestroyBlock, protocol.PlayerActionStartBreak, protocol.PlayerActionCrackBreak,
 			protocol.PlayerActionContinueDestroyBlock, protocol.PlayerActionAbortBreak, protocol.PlayerActionStopBreak:
@@ -59,13 +61,18 @@ func (d *BadPacketC) Detect(pk packet.Packet) {
 			}
 		}
 	case *packet.PlayerAuthInput:
-		if pk.InputData.Load(packet.InputFlagPerformItemInteraction) && d.mPlayer.GameMode != packet.GameTypeCreative {
-			d.mPlayer.FailDetection(d)
-		}
-		for _, action := range pk.BlockActions {
-			if action.Action == protocol.PlayerActionCreativePlayerDestroyBlock {
+		if pk.InputData.Load(packet.InputFlagPerformItemInteraction) {
+			if interactionData, ok := pk.ItemInteractionData.Value(); ok && interactionData.ActionType == protocol.UseItemActionBreakBlock &&
+				d.mPlayer.GameMode != packet.GameTypeCreative {
 				d.mPlayer.FailDetection(d)
-				break
+			}
+		}
+		if blockActions, ok := pk.BlockActions.Value(); ok {
+			for _, action := range blockActions {
+				if action.Action == protocol.PlayerActionCreativePlayerDestroyBlock && d.mPlayer.GameMode != packet.GameTypeCreative {
+					d.mPlayer.FailDetection(d)
+					break
+				}
 			}
 		}
 	}

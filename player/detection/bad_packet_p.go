@@ -48,10 +48,14 @@ func (d *BadPacketP) Detect(pk packet.Packet) {
 	}
 
 	// Vanilla gliding can only ever start while the player is airborne and
-	// falling (gliding into a dive). A client-side flag spoof (e.g. Solstice's
-	// "Whether or not to send start gliding packet") sets the start-gliding
-	// flag regardless of the player's motion.
-	if i.InputData.Load(packet.InputFlagStartGliding) && i.Delta[1] >= 0 {
+	// falling (gliding into a dive). A vanilla player can also start a glide
+	// right at the jump apex or shortly after jumping while still ascending
+	// (double-tap jump) and off slime/honey bounces, so only a clearly
+	// positive (ascending) delta is impossible for a legit glide start. A
+	// client-side flag spoof (e.g. Solstice's "Whether or not to send start
+	// gliding packet") sets the start-gliding flag regardless of the player's
+	// motion.
+	if i.InputData.Load(packet.InputFlagStartGliding) && i.Delta[1] > 0.1 {
 		d.mPlayer.FailDetection(d, "reason", "glide_start_no_descent")
 		return
 	}

@@ -140,6 +140,7 @@ func NewAuthoritativeMovementComponent(p *player.Player) *AuthoritativeMovementC
 	return &AuthoritativeMovementComponent{
 		mPlayer:              p,
 		nonAuthoritative:     &NonAuthoritativeMovement{},
+		movementSpeed:        0.1,
 		defaultMovementSpeed: 0.1,
 		airSpeed:             0.02,
 	}
@@ -392,6 +393,11 @@ func (mc *AuthoritativeMovementComponent) HasKnockback() bool {
 	return mc.ticksSinceKb == 0
 }
 
+// TicksSinceKnockback returns the amount of ticks since knockback was last set.
+func (mc *AuthoritativeMovementComponent) TicksSinceKnockback() uint64 {
+	return mc.ticksSinceKb
+}
+
 // Teleport notifies the movement component of a teleport.
 func (mc *AuthoritativeMovementComponent) Teleport(pos mgl32.Vec3, onGround bool, smoothed bool) {
 	mc.teleportPos = pos
@@ -467,17 +473,13 @@ func (mc *AuthoritativeMovementComponent) BoundingBox() cube.BBox {
 	scale := mc.size[2]
 	width := (mc.size[0] * 0.5) * scale
 	height := mc.size[1] * scale
-	var yOffset float32
-	if mc.mPlayer.VersionInRange(-1, player.GameVersion1_20_60) {
-		yOffset = mc.slideOffset.Y()
-	}
 
 	return cube.Box(
 		mc.pos[0]-width,
-		(mc.pos[1] + yOffset),
+		mc.pos[1],
 		mc.pos[2]-width,
 		mc.pos[0]+width,
-		mc.pos[1]+height+yOffset,
+		mc.pos[1]+height,
 		mc.pos[2]+width,
 	).GrowVec3(mgl32.Vec3{-1e-4, 0, -1e-4})
 }
@@ -485,17 +487,13 @@ func (mc *AuthoritativeMovementComponent) BoundingBox() cube.BBox {
 // ClientBoundingBox returns the bounding box of the movement component translated to the client's position.
 func (mc *AuthoritativeMovementComponent) ClientBoundingBox() cube.BBox {
 	width := mc.size[0] / 2
-	var yOffset float32
-	if mc.mPlayer.VersionInRange(-1, player.GameVersion1_20_60) {
-		yOffset = mc.slideOffset.Y()
-	}
 
 	return cube.Box(
 		mc.nonAuthoritative.pos[0]-width,
-		mc.nonAuthoritative.pos[1]+yOffset,
+		mc.nonAuthoritative.pos[1],
 		mc.nonAuthoritative.pos[2]-width,
 		mc.nonAuthoritative.pos[0]+width,
-		mc.nonAuthoritative.pos[1]+mc.size[1]+yOffset,
+		mc.nonAuthoritative.pos[1]+mc.size[1],
 		mc.nonAuthoritative.pos[2]+width,
 	).GrowVec3(mgl32.Vec3{-1e-4, 0, -1e-4})
 }
@@ -727,11 +725,10 @@ func (mc *AuthoritativeMovementComponent) Update(pk *packet.PlayerAuthInput) {
 	mc.pressingSprint = pk.InputData.Load(packet.InputFlagSprintDown)
 
 	startFlag, stopFlag := pk.InputData.Load(packet.InputFlagStartSprinting), pk.InputData.Load(packet.InputFlagStopSprinting)
-	isNewVersionPlayer := mc.mPlayer.VersionInRange(player.GameVersion1_21_0, 65536)
 	var needsSpeedAdjusted bool
 	if startFlag && stopFlag /*&& hasForwardKeyPressed*/ {
-		mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, isNewVersionPlayer, "1.21.0+ start/stop state race condition")
-		needsSpeedAdjusted = isNewVersionPlayer
+		mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, true, "start/stop state race condition")
+		needsSpeedAdjusted = true
 		/*if !mc.serverSprintApplied {
 			if mc.serverSprint {
 				mc.sprinting = true
@@ -758,17 +755,17 @@ func (mc *AuthoritativeMovementComponent) Update(pk *packet.PlayerAuthInput) {
 			mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, true, "server sprint applied - airSpeed adjusted to 0.02")
 		}
 	} else if startFlag /*  && !mc.sprinting && hasForwardKeyPressed*/ {
-		mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, isNewVersionPlayer, "1.21.0+ starts sprint")
+		mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, true, "starts sprint")
 		mc.sprinting = true
 
-		needsSpeedAdjusted = isNewVersionPlayer
+		needsSpeedAdjusted = true
 		mc.airSpeed = 0.026
 		mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, true, "airSpeed adjusted to 0.026")
 	} else if stopFlag /*&& mc.sprinting && !hasForwardKeyPressed*/ {
-		mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, isNewVersionPlayer, "1.21.0+ stops sprint")
+		mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, true, "stops sprint")
 		mc.sprinting = false
 
-		needsSpeedAdjusted = isNewVersionPlayer && !mc.serverUpdatedSpeed
+		needsSpeedAdjusted = !mc.serverUpdatedSpeed
 		mc.airSpeed = 0.02
 		mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, true, "airSpeed adjusted to 0.02")
 	}
@@ -839,32 +836,6 @@ func (mc *AuthoritativeMovementComponent) Update(pk *packet.PlayerAuthInput) {
 
 	mc.impulse = pk.MoveVector.Mul(0.98)
 	simulation.SimulatePlayerMovement(mc.mPlayer, mc)
-
-	// On older versions, there seems to be a delay before the sprinting status is actually applied.
-	if !isNewVersionPlayer {
-		needsSpeedAdjusted = false
-		if startFlag && stopFlag /*&& hasForwardKeyPressed*/ {
-			mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, true, "1.20.80- has start/stop sprint race condition")
-			mc.sprinting = false
-			needsSpeedAdjusted = true
-		} else if startFlag /*&& !mc.sprinting && hasForwardKeyPressed*/ {
-			mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, true, "1.20.80- starts sprint")
-			mc.sprinting = true
-			needsSpeedAdjusted = true
-		} else if stopFlag /*&& mc.sprinting && !hasForwardKeyPressed*/ {
-			mc.mPlayer.Dbg.Notify(player.DebugModeMovementSim, true, "1.20.80- stops sprint")
-			mc.sprinting = false
-			needsSpeedAdjusted = !mc.serverUpdatedSpeed
-		}
-		// Adjust the movement speed of the movement component if their sprint state changes.
-		if needsSpeedAdjusted {
-			mc.serverUpdatedSpeed = false
-			mc.movementSpeed = mc.defaultMovementSpeed
-			if mc.sprinting {
-				mc.movementSpeed *= 1.3
-			}
-		}
-	}
 
 	// Notify any detections that need to handle knockback.
 	if mc.HasKnockback() {

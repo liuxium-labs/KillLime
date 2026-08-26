@@ -45,14 +45,18 @@ func (d *NukerA) Metadata() *player.DetectionMetadata {
 func (d *NukerA) Detect(pk packet.Packet) {
 	// A nuker sends many block-breaking actions in a single tick instead of
 	// waiting for each block to break. Vanilla clients only ever break one
-	// block at a time, so multiple destroy/stop actions per input is
-	// unmistakably a nuker (this works in creative mode too, where the
-	// vanilla client also only destroys one block per input).
+	// block at a time, so multiple destroy actions per input is unmistakably a
+	// nuker (this works in creative mode too, where the vanilla client also
+	// only destroys one block per input). Only the destroy action is counted:
+	// StopBreak is also sent by vanilla clients when jitter/butterfly clicking
+	// fast, so counting it would flag legitimate fast clickers.
 	if authInput, ok := pk.(*packet.PlayerAuthInput); ok {
 		brokenInTick := 0
-		for _, action := range authInput.BlockActions {
-			if action.Action == protocol.PlayerActionPredictDestroyBlock || action.Action == protocol.PlayerActionStopBreak {
-				brokenInTick++
+		if blockActions, ok := authInput.BlockActions.Value(); ok {
+			for _, action := range blockActions {
+				if action.Action == protocol.PlayerActionPredictDestroyBlock {
+					brokenInTick++
+				}
 			}
 		}
 		if brokenInTick > 3 {
@@ -69,6 +73,9 @@ func (d *NukerA) Detect(pk packet.Packet) {
 	if !ok {
 		return
 	}
+	// Since 1.21.20 block breaking moved into PlayerAuthInput.BlockActions;
+	// on 1.26.40+ a break_block item transaction is never sent by the
+	// vanilla client.
 	if trDat.ActionType == protocol.UseItemActionBreakBlock && (d.mPlayer.GameMode == packet.GameTypeSurvival || d.mPlayer.GameMode == packet.GameTypeAdventure) {
 		d.mPlayer.FailDetection(d)
 	}

@@ -53,7 +53,7 @@ func (d *BadPacketF) Detect(pk packet.Packet) {
 			d.checkHotbarSlot(dat.HotBarSlot)
 		case *protocol.UseItemTransactionData:
 			d.checkHotbarSlot(dat.HotBarSlot)
-			if dat.ActionType != protocol.UseItemActionClickBlock || !d.mPlayer.VersionInRange(player.GameVersion1_21_20, protocol.CurrentProtocol) {
+			if dat.ActionType != protocol.UseItemActionClickBlock {
 				return
 			}
 			if dat.TriggerType != protocol.TriggerTypePlayerInput && dat.TriggerType != protocol.TriggerTypeSimulationTick {

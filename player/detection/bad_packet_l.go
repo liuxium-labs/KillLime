@@ -47,12 +47,20 @@ func (d *BadPacketL) Detect(pk packet.Packet) {
 		return
 	}
 
+	// A player riding an entity reports the vehicle's motion and collision
+	// flags, which are not bound by player gravity.
+	if _, hasVehicle := i.ClientPredictedVehicle.Value(); hasVehicle {
+		d.mPlayer.PassDetection(d, 0.5)
+		return
+	}
+
 	// The client claims to be touching the ground vertically, so any significant
 	// downward velocity is impossible in that same tick (the Y velocity is
 	// clamped to roughly zero while standing on a block). The vanilla
 	// gravitational step (-0.0784) is only ever sent while airborne.
 	verticalCollision := i.InputData.Load(packet.InputFlagVerticalCollision)
-	if verticalCollision && i.Delta[1] < -0.05 {
+	gravityThreshold := float32(-0.0784 * 1.5)
+	if verticalCollision && i.Delta[1] < gravityThreshold {
 		d.mPlayer.FailDetection(d, "vel_y", i.Delta[1])
 		return
 	}

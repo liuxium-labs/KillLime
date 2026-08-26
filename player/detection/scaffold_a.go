@@ -52,13 +52,17 @@ func (d *ScaffoldA) Detect(pk packet.Packet) {
 	if !ok {
 		return
 	}
-	if !d.mPlayer.VersionInRange(player.GameVersion1_21_20, protocol.CurrentProtocol) {
-		return
-	}
 	if inHand, _ := d.mPlayer.HeldItems(); utils.IsBlockPlaceAlwaysSimBased(inHand.Item()) {
 		return
 	}
-	if trData.ClickedPosition.LenSqr() == 0 && trData.TriggerType == protocol.TriggerTypePlayerInput {
+	// The click vector is only meaningful for a block click. Right clicking on
+	// air (eating food, charging a bow, throwing ender pearls, using a shield)
+	// sends a ClickAir transaction with a zero ClickedPosition, so those must
+	// never be compared against. Scaffold cheats send a block click with a
+	// zeroed click point, which is what this check is after.
+	if trData.ActionType == protocol.UseItemActionClickBlock && trData.ClickedPosition.LenSqr() == 0 && trData.TriggerType == protocol.TriggerTypePlayerInput {
 		d.mPlayer.FailDetection(d)
+		return
 	}
+	d.mPlayer.PassDetection(d, 0.5)
 }

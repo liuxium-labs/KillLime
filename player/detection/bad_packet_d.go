@@ -48,8 +48,10 @@ func (d *BadPacketD) Detect(pk packet.Packet) {
 		if !pk.InputData.Load(packet.InputFlagPerformItemStackRequest) {
 			return
 		}
-		for _, action := range pk.ItemStackRequest.Actions {
-			d.checkRequestAction(action)
+		if req, ok := pk.ItemStackRequest.Value(); ok {
+			for _, action := range req.Actions {
+				d.checkRequestAction(action)
+			}
 		}
 	case *packet.ItemStackRequest:
 		for _, request := range pk.Requests {
@@ -61,7 +63,13 @@ func (d *BadPacketD) Detect(pk packet.Packet) {
 }
 
 func (d *BadPacketD) checkRequestAction(action protocol.StackRequestAction) {
-	if _, ok := action.(*protocol.CraftCreativeStackRequestAction); ok && d.mPlayer.GameMode != packet.GameTypeCreative && d.mPlayer.GameMode != packet.GameTypeCreativeSpectator {
+	// GameMode only updates after the client acknowledges a gamemode change,
+	// so a player that switches to creative and immediately crafts (possible
+	// within a single round trip) must not be flagged against the stale value.
+	if d.mPlayer.PendingGameMode != -1 {
+		return
+	}
+	if _, ok := action.(*protocol.CraftCreativeStackRequestAction); ok && d.mPlayer.GameMode != packet.GameTypeCreative {
 		d.mPlayer.FailDetection(d)
 	}
 }

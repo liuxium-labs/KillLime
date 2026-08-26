@@ -134,6 +134,14 @@ func (a *transferAction) execute() {
 		//mPlayer.Log().Debug("unexpected empty source item")
 		return
 	}
+	if a.count > srcItem.Count() {
+		// The client asked to transfer more items than the slot holds. Without
+		// this guard the source slot would be written with a negative count
+		// (KillLime's Inventory.SetSlot does not clamp), which in the predicted
+		// inventory is an item duplication primitive.
+		mPlayer.Log().Debug("attempted to transfer items, but slot has insufficient count", "count", a.count, "availableCount", srcItem.Count())
+		return
+	}
 	if dstItem.Empty() {
 		dstItem = srcItem.Grow(-math32.MaxInt32)
 	}

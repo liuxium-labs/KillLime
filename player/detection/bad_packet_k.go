@@ -8,6 +8,8 @@ import (
 type BadPacketK struct {
 	mPlayer  *player.Player
 	metadata *player.DetectionMetadata
+
+	spinSameTickCount int
 }
 
 func New_BadPacketK(p *player.Player) *BadPacketK {
@@ -49,12 +51,20 @@ func (d *BadPacketK) Detect(pk packet.Packet) {
 
 	// A legitimate client can only start a spin attack while it is swimming and
 	// moving through water with a trident, and never immediately stop it in the
-	// exact same tick after starting it.
+	// exact same tick after starting it. A press+release falling inside one
+	// input tick happens naturally on fast taps though, so only a repeated
+	// same-tick start+stop pattern (which is what the NukkitLagback disabler
+	// forces on every tick) is flagged.
 	startSpin := i.InputData.Load(packet.InputFlagStartSpinAttack)
 	stopSpin := i.InputData.Load(packet.InputFlagStopSpinAttack)
 	if startSpin && stopSpin {
-		d.mPlayer.FailDetection(d, "reason", "spin_toggle")
-		return
+		d.spinSameTickCount++
+		if d.spinSameTickCount >= 3 {
+			d.mPlayer.FailDetection(d, "reason", "spin_toggle")
+			return
+		}
+	} else {
+		d.spinSameTickCount = 0
 	}
 	d.mPlayer.PassDetection(d, 0.5)
 }

@@ -49,10 +49,22 @@ func (d *BadPacketQ) Detect(pk packet.Packet) {
 	}
 
 	// Vanilla fall physics: the Y velocity compounds with the 0.98 gravity
-	// multiplier and caps at 0.08*0.98/(1-0.98) = 3.92 blocks/tick. Anyfall
-	// faster than this cannot be produced by normal gravity, e.g. the fast
-	// fall disabler setting the Y delta directly each tick.
-	if i.Delta[1] < -game.TerminalVelocity {
+	// multiplier and caps at 0.08*0.98/(1-0.98) = 3.92 blocks/tick. A server
+	// can push the player downward faster than this (knockback from an entity
+	// or custom plugins, elytra dive + firework boosts), so exempt all
+	// authoritative-velocity states and give a small margin for float rounding
+	// at the exact cap. Anything clearly below it cannot be produced by normal
+	// gravity, e.g. the fast fall disabler setting the Y delta directly each
+	// tick.
+	if d.mPlayer.Movement().HasTeleport() || d.mPlayer.Movement().PendingTeleports() > 0 ||
+		d.mPlayer.Movement().HasKnockback() || d.mPlayer.Movement().TicksSinceKnockback() <= 1 ||
+		d.mPlayer.Movement().Gliding() || d.mPlayer.Movement().Flying() ||
+		d.mPlayer.Movement().NoClip() || d.mPlayer.Movement().Immobile() {
+		d.mPlayer.PassDetection(d, 0.2)
+		return
+	}
+
+	if i.Delta[1] < -game.TerminalVelocity-0.05 {
 		d.mPlayer.FailDetection(d, "vel_y", i.Delta[1])
 		return
 	}

@@ -96,8 +96,8 @@ func (d *EditionFakerA) Detect(pk packet.Packet) {
 	deviceOS := d.mPlayer.ClientDat.DeviceOS
 	titleID := d.mPlayer.IdentityDat.TitleID
 
-	// 1.21.90+ clients often omit title ID in chain data; nothing to validate.
-	if titleID == "" && d.mPlayer.Version >= player.GameVersion1_21_90 {
+	// 1.26.40+ clients often omit title ID in chain data; nothing to validate.
+	if titleID == "" {
 		return
 	}
 
@@ -115,17 +115,8 @@ func (d *EditionFakerA) Detect(pk packet.Packet) {
 		return
 	}
 
-	// Check if the client is trying to log in with a GDK client where GDK is not available.
-	if deviceOS == protocol.DeviceWin32 && d.mPlayer.Version < player.GameVersion1_21_120 {
-		d.mPlayer.FailDetection(
-			d,
-			"titleID", titleID,
-			"givenOS", utils.Device(deviceOS),
-			"expectedOS", "Windows (UWP)",
-			"protocol", d.mPlayer.Version,
-		)
-		return
-	}
+	// Windows GDK (DeviceWin32) has been the standard since 1.21.120; no need to
+	// flag it on 1.26.40+.
 
 	// Check that the title ID matches the expected device OS.
 	if expected, ok := knownTitleIDs[deviceOS]; ok && expected != titleID {
@@ -136,11 +127,6 @@ func (d *EditionFakerA) Detect(pk packet.Packet) {
 
 		// Ugly & much [sugar honey iced tea] hack for BedrockTogether - why do console versions need external solutions to join servers anyway?
 		if titleID == titleIDAndroid && (deviceOS == protocol.DeviceOrbis || deviceOS == protocol.DeviceXBOX) {
-			return
-		}
-
-		// Bug with old game version
-		if titleID == "" && d.mPlayer.Version == player.GameVersion1_21_80 {
 			return
 		}
 

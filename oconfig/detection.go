@@ -21,6 +21,7 @@ type Detection struct {
 	MaxVl      float32 `json:"max_violations" comment:"The maximum amount of violations that KillLime will allow before taking action for this detection."`
 	FlagMsg    string  `json:"flag_message" comment:"The message that will be sent to authorized staff when a player fails this detection."`
 	Punishment string  `json:"punishment_type" comment:"The type of punishment to be applied when a player reaches the maximum amount of violations for this detection."`
+	KickCode   string  `json:"kick_code" comment:"Short kick code sent to the client on punishment (e.g. 'Bluebird', 'SugarRush'). If empty, the default message is used."`
 }
 
 func DtcOpts(dtc string) Detection {

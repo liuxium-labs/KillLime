@@ -1,6 +1,8 @@
 package detection
 
 import (
+	"time"
+
 	"github.com/killlime/killlime/player"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
@@ -11,6 +13,7 @@ type TimerA struct {
 
 	inputsInWindow  int
 	windowStartTick int64
+	windowStartTime time.Time
 }
 
 func New_TimerA(p *player.Player) *TimerA {
@@ -22,6 +25,7 @@ func New_TimerA(p *player.Player) *TimerA {
 			MaxViolations: 5,
 		},
 		windowStartTick: p.ServerTick,
+		windowStartTime: p.Time(),
 	}
 }
 
@@ -51,13 +55,27 @@ func (d *TimerA) Detect(pk packet.Packet) {
 	}
 
 	d.inputsInWindow++
-	if d.mPlayer.ServerTick-d.windowStartTick >= 20 {
-		if d.inputsInWindow > 20+5 {
-			d.mPlayer.FailDetection(d, "inputs", d.inputsInWindow, "window_ticks", 20)
-		} else {
-			d.mPlayer.PassDetection(d, 0.2)
-		}
-		d.windowStartTick = d.mPlayer.ServerTick
-		d.inputsInWindow = 0
+	elapsedTicks := d.mPlayer.ServerTick - d.windowStartTick
+	elapsedMs := d.mPlayer.Time().Sub(d.windowStartTime).Milliseconds()
+	if elapsedTicks < 20 && elapsedMs < 1000 {
+		return
 	}
+
+	// The amount of PAI packets a legitimate client can send in the window's
+	// real-time span. ServerTick advances in bursts after a stalled tick loop,
+	// so a window measured purely in server ticks can span much more than one
+	// second of client inputs; scaling the threshold by the elapsed wall time
+	// keeps the check accurate regardless of tick loop stalls.
+	expectedInputs := int(elapsedMs/50) + 1
+	if elapsedMs < 1000 {
+		expectedInputs = 20
+	}
+	if d.inputsInWindow > expectedInputs+5 {
+		d.mPlayer.FailDetection(d, "inputs", d.inputsInWindow, "expected", expectedInputs, "window_ms", elapsedMs)
+	} else {
+		d.mPlayer.PassDetection(d, 0.2)
+	}
+	d.windowStartTick = d.mPlayer.ServerTick
+	d.windowStartTime = d.mPlayer.Time()
+	d.inputsInWindow = 0
 }

@@ -8,6 +8,9 @@ import (
 type BadPacketH struct {
 	mPlayer  *player.Player
 	metadata *player.DetectionMetadata
+
+	unmatchedCount         int
+	lastUnmatchedTimestamp int64
 }
 
 func New_BadPacketH(p *player.Player) *BadPacketH {
@@ -42,18 +45,31 @@ func (d *BadPacketH) Metadata() *player.DetectionMetadata {
 }
 
 func (d *BadPacketH) Detect(pk packet.Packet) {
-	if _, ok := pk.(*packet.NetworkStackLatency); !ok {
+	ns, ok := pk.(*packet.NetworkStackLatency)
+	if !ok {
 		return
 	}
 
 	// If the packet reached this point, the client response to our acknowledgment
 	// did not match any pending ack timestamp. Legitimate clients only echo the
-	// exact timestamp KillLime sent. A mismatch while we still have pending acks
-	// is a strong indicator of a ping spoof disabler (e.g - Flareon's ping spoof
-	// subtracts a delay from the timestamp before responding).
+	// exact timestamp KillLime sent. However, RakNet can redeliver a client
+	// response when the server's acknowledgement is lost, producing the same
+	// (already consumed) timestamp again, so a duplicate of a previously seen
+	// unmatched timestamp is never counted. A single network glitch also must
+	// not punish; only a repeated pattern of unmatched timestamps is treated
+	// as tampering (a ping spoof disabler e.g. Flareon subtracts a delay from
+	// the timestamp before responding).
 	if d.mPlayer.ACKs().Pending() > 0 {
-		d.mPlayer.FailDetection(d, "pending_acks", d.mPlayer.ACKs().Pending())
-	} else {
-		d.mPlayer.PassDetection(d, 0.5)
+		if ns.Timestamp != d.lastUnmatchedTimestamp {
+			d.lastUnmatchedTimestamp = ns.Timestamp
+			d.unmatchedCount++
+			if d.unmatchedCount >= 3 {
+				d.mPlayer.FailDetection(d, "pending_acks", d.mPlayer.ACKs().Pending())
+			}
+		}
+		return
 	}
+	d.lastUnmatchedTimestamp = 0
+	d.unmatchedCount = 0
+	d.mPlayer.PassDetection(d, 0.5)
 }

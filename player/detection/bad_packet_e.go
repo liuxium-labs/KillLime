@@ -1,6 +1,8 @@
 package detection
 
 import (
+	"math"
+
 	"github.com/killlime/killlime/player"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
@@ -49,7 +51,7 @@ func (d *BadPacketE) Detect(pk packet.Packet) {
 	}
 
 	for index := range 2 {
-		if v := i.MoveVector[index]; v < -1.001 || v > 1.001 {
+		if v := i.MoveVector[index]; v < -1.001 || v > 1.001 || math.IsNaN(float64(v)) {
 			d.mPlayer.FailDetection(d)
 		}
 	}

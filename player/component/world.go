@@ -62,9 +62,9 @@ func (c *WorldUpdaterComponent) HandleLevelChunk(pk *packet.LevelChunk) {
 		c.mPlayer.ACKs().Add(acknowledgement.NewPlayerInitalizedACK(c.mPlayer))
 	}
 
-	// Check if this LevelChunk packet is compatiable with KillLime's handling.
-	if pk.SubChunkCount == protocol.SubChunkRequestModeLimited || pk.SubChunkCount == protocol.SubChunkRequestModeLimitless {
-		//c.mPlayer.Log().Debug("cannot debug chunk due to subchunk request mode unsupported", "subChunkCount", pk.SubChunkCount)
+	// Check if this LevelChunk packet is a sub-chunk request response (not a full chunk).
+	if _, ok := pk.SubChunkLimit.Value(); ok {
+		//c.mPlayer.Log().Debug("cannot debug chunk due to subchunk request mode unsupported")
 		return
 	}
 	acknowledgement.NewChunkUpdateACK(c.mPlayer, pk).Run()
@@ -108,7 +108,7 @@ func (c *WorldUpdaterComponent) AttemptItemInteractionWithBlock(pk *packet.Inven
 
 	holding := c.mPlayer.Inventory().Holding()
 	_, heldIsBlock := holding.Item().(df_world.Block)
-	if heldIsBlock && c.mPlayer.VersionInRange(player.GameVersion1_21_20, protocol.CurrentProtocol) && dat.ClientPrediction == protocol.ClientPredictionFailure {
+	if heldIsBlock && dat.ClientPrediction == protocol.ClientPredictionFailure {
 		// We don't want to force a sync here, as the client has already predicted their interaction has failed.
 		return false
 	}
@@ -254,7 +254,7 @@ func (c *WorldUpdaterComponent) ValidateInteraction(pk *packet.InventoryTransact
 		c.initalInteractionAccepted = true
 		return true
 	}
-	if c.mPlayer.VersionInRange(player.GameVersion1_21_20, protocol.CurrentProtocol) && dat.ClientPrediction != protocol.ClientPredictionSuccess {
+	if dat.ClientPrediction != protocol.ClientPredictionSuccess {
 		return true
 	}
 

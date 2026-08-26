@@ -10,7 +10,8 @@ type BadPacketN struct {
 	mPlayer  *player.Player
 	metadata *player.DetectionMetadata
 
-	lastPos mgl32.Vec3
+	lastPos   mgl32.Vec3
+	hasLastPos bool
 }
 
 func New_BadPacketN(p *player.Player) *BadPacketN {
@@ -45,7 +46,8 @@ func (d *BadPacketN) Metadata() *player.DetectionMetadata {
 }
 
 func (d *BadPacketN) Detect(pk packet.Packet) {
-	if _, ok := pk.(*packet.PlayerAuthInput); !ok {
+	i, ok := pk.(*packet.PlayerAuthInput)
+	if !ok {
 		return
 	}
 
@@ -54,14 +56,31 @@ func (d *BadPacketN) Detect(pk packet.Packet) {
 	// detections run.
 	clientPos := d.mPlayer.Movement().Client().Pos()
 
+	// The very first accepted input establishes the baseline. Client().Pos()
+	// starts at the zero vector before the first input is processed, which is
+	// not a real client position, so it must never be used as a baseline or
+	// be compared against (otherwise players spawning far from the world
+	// origin would be flagged).
+	if clientPos == (mgl32.Vec3{}) {
+		return
+	}
+
 	// ignore the very first input sample
-	if d.lastPos == (mgl32.Vec3{}) {
+	if !d.hasLastPos {
+		d.hasLastPos = true
 		d.lastPos = clientPos
 		return
 	}
 
 	if d.mPlayer.Movement().HasTeleport() || d.mPlayer.Movement().PendingTeleports() > 0 ||
 		d.mPlayer.Movement().HasKnockback() || d.mPlayer.Movement().Immobile() {
+		d.lastPos = clientPos
+		return
+	}
+
+	// A player riding an entity reports the vehicle's position, which can move
+	// faster than the player could ever walk. Skip the distance check entirely.
+	if _, hasVehicle := i.ClientPredictedVehicle.Value(); hasVehicle {
 		d.lastPos = clientPos
 		return
 	}

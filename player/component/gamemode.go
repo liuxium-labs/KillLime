@@ -15,5 +15,6 @@ func NewGamemodeComponent(p *player.Player) *GamemodeComponent {
 }
 
 func (c *GamemodeComponent) Handle(pk *packet.SetPlayerGameType) {
+	c.mPlayer.PendingGameMode = pk.GameType
 	c.mPlayer.ACKs().Add(acknowledgement.NewUpdateGamemodeACK(c.mPlayer, pk.GameType))
 }
