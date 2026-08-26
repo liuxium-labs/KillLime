@@ -28,7 +28,7 @@ func ItemName(i world.Item) string {
 
 // noinspection ALL
 //
-//go:linkname ReadItem github.com/df-mc/dragonfly/server/internal/nbtconv.Item
+//go:linkname ReadItem github.com/df-mc/dragonfly/server/item.ReadNBT
 func ReadItem(data map[string]any, s *item.Stack) item.Stack
 
 // noinspection ALL
