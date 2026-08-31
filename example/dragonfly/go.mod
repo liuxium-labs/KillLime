@@ -44,7 +44,7 @@ require (
 	github.com/pion/turn/v5 v5.0.10 // indirect
 	github.com/pion/webrtc/v4 v4.2.16-0.20260627075746-7a223a6f4d4f // indirect
 	github.com/sandertv/go-raknet v1.15.2-0.20260705184311-0d1fd09e2cf6 // indirect
-	github.com/sandertv/gophertunnel v1.59.0 // indirect
+	github.com/sandertv/gophertunnel v1.61.0 // indirect
 	github.com/segmentio/fasthash v1.0.3 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/yuin/gopher-lua v1.1.2 // indirect

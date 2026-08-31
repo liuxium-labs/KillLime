@@ -123,7 +123,7 @@ func Vec3HzDistSqr(vec3 mgl32.Vec3) float32 {
 func MinVec3(vecs []mgl32.Vec3) mgl32.Vec3 {
 	min := mgl32.Vec3{math32.MaxFloat32, math32.MaxFloat32, math32.MaxFloat32}
 	for _, v := range vecs {
-		if v[0] <= min[0] || v[1] <= min[1] || v[2] <= min[2] {
+		if v[0] <= min[0] && v[1] <= min[1] && v[2] <= min[2] {
 			min = v
 		}
 	}
@@ -134,7 +134,7 @@ func MinVec3(vecs []mgl32.Vec3) mgl32.Vec3 {
 func MaxVec3(vecs []mgl32.Vec3) mgl32.Vec3 {
 	max := mgl32.Vec3{-math32.MaxFloat32, -math32.MaxFloat32, -math32.MaxFloat32}
 	for _, v := range vecs {
-		if v[0] >= max[0] || v[1] >= max[1] || v[2] >= max[2] {
+		if v[0] >= max[0] && v[1] >= max[1] && v[2] >= max[2] {
 			max = v
 		}
 	}

@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/killlime/killlime v0.0.0-20260208201834-bff025a3d827
-	github.com/sandertv/gophertunnel v1.59.0
+	github.com/sandertv/gophertunnel v1.61.0
 )
 
 require (
