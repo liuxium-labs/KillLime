@@ -6,6 +6,7 @@ const (
 	TypeBadPacket    = "BadPacket"
 	TypeBlink        = "Blink"
 	TypeEditionFaker = "EditionFaker"
+	TypeFly          = "Fly"
 	TypeKillaura     = "Killaura"
 	TypeInvMove      = "InvMove"
 	TypeNoSlowdown   = "NoSlowdown"

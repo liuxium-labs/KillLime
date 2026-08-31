@@ -77,15 +77,21 @@ func (d *BlinkA) Detect(pk packet.Packet) {
 			d.freezePos = pos
 			return
 		}
+		d.lastInputTime = now
+		d.freezePos = pos
+		d.mPlayer.PassDetection(d, 0.3)
+		return
 	}
 
 	// Detect the start of a freeze: a large gap between inputs.
 	if sinceLast > 250*time.Millisecond {
 		d.freezeStart = d.lastInputTime
-		// Record the position from BEFORE the gap (the last known good position).
-		// freezePos was set at the end of the previous input, so it holds the
-		// pre-gap position.
+		// freezePos still holds the pre-gap position from the last tick.
 		d.freezeActive = true
+		d.lastInputTime = now
+		// Do NOT update freezePos here — we need the pre-gap position.
+		d.mPlayer.PassDetection(d, 0.3)
+		return
 	}
 
 	d.lastInputTime = now

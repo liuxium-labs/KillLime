@@ -54,6 +54,10 @@ type Player struct {
 	// must use the same block-network representation because the client does not receive another StartGame packet.
 	blockNetwork blocknetwork.Codec
 
+	// BroadcastChat is a function that broadcasts a message to all connected players.
+	// It is set by the handler when the player joins.
+	BroadcastChat func(string)
+
 	// With fast transfers, the client will still retain it's original runtime and unique IDs, so
 	// we must translate them to new ones, while still retaining the old ones for the client to use.
 	RuntimeId uint64
@@ -436,7 +440,7 @@ func (p *Player) Disconnect(reason string) {
 	p.SendPacketToClient(&packet.Disconnect{
 		Message:         reason,
 		FilteredMessage: reason,
-		//Reason:          packet.DisconnectReasonKicked,
+		Reason:          0,
 	})
 	p.Close()
 }

@@ -250,7 +250,9 @@ func NewExampleEventHandlerWithAdmin(store AdminStore) *ExampleEventHandler {
 				return nil
 			}
 			enumIdx := command.FindOrCreateEnum(pk, "KillLime:debug", []string{"debug"})
-			modes := append(DebugModeList, "type_message", "type_log")
+			modes := make([]string, 0, len(DebugModeList)+2)
+			modes = append(modes, DebugModeList...)
+			modes = append(modes, "type_message", "type_log")
 			modeIdx := command.FindOrCreateDynamicEnum(pk, "KillLime:debug_modes", modes)
 			return &protocol.CommandOverload{
 				Parameters: []protocol.CommandParameter{
@@ -714,6 +716,15 @@ func (h *ExampleEventHandler) HandleJoin(ctx *event.Context[*Player]) {
 	h.pMu.Lock()
 	defer h.pMu.Unlock()
 	h.connected[p.Name()] = p
+	p.BroadcastChat = func(msg string) {
+		h.pMu.RLock()
+		defer h.pMu.RUnlock()
+		for _, other := range h.connected {
+			if other != p {
+				other.RawMessage(msg)
+			}
+		}
+	}
 	if p.HasPerm(PermissionAlerts) {
 		h.allowedAlerts[p.Name()] = p
 	}

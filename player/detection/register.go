@@ -55,12 +55,16 @@ func Register(p *player.Player) {
 
 	// speed detections
 	p.RegisterDetection(New_SpeedA(p))
+	p.RegisterDetection(New_SpeedB(p))
 
 	// no slowdown detections
 	p.RegisterDetection(New_NoSlowdownA(p))
 
 	// blink detections
 	p.RegisterDetection(New_BlinkA(p))
+
+	// fly detections
+	p.RegisterDetection(New_FlyA(p))
 
 	// timer detections
 	p.RegisterDetection(New_TimerA(p))
