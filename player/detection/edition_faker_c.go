@@ -58,8 +58,11 @@ func (d *EditionFakerC) Metadata() *player.DetectionMetadata {
 
 func (d *EditionFakerC) Detect(pk packet.Packet) {
 	if i, ok := pk.(*packet.PlayerAuthInput); ok {
-		// On 1.26.40+ the valid range is InputModeMouse..InputModeGamePad.
+		// There is no input mode after motion controller or before mouse.
 		var maxInputMode uint32 = packet.InputModeGamePad
+		if d.mPlayer.Version < player.GameVersion1_21_120 {
+			maxInputMode = 4 // legacy: packet.InputModeMotionController
+		}
 
 		if i.InputMode > maxInputMode || i.InputMode < packet.InputModeMouse {
 			d.mPlayer.FailDetection(d, "inputMode", i.InputMode)

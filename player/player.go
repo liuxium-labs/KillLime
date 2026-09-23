@@ -26,7 +26,29 @@ import (
 )
 
 const (
-	GameVersion1_26_40 = 2168
+	GameVersion1_20_0  = 589
+	GameVersion1_20_10 = 594
+	GameVersion1_20_30 = 618
+	GameVersion1_20_40 = 622
+	GameVersion1_20_50 = 630
+	GameVersion1_20_60 = 649
+	GameVersion1_20_70 = 662
+	GameVersion1_20_80 = 671
+
+	GameVersion1_21_0   = 685
+	GameVersion1_21_2   = 686
+	GameVersion1_21_20  = 712
+	GameVersion1_21_30  = 729
+	GameVersion1_21_40  = 748
+	GameVersion1_21_50  = 766
+	GameVersion1_21_60  = 776
+	GameVersion1_21_70  = 786
+	GameVersion1_21_80  = 800
+	GameVersion1_21_90  = 818
+	GameVersion1_21_93  = 819
+	GameVersion1_21_100 = 827
+	GameVersion1_21_111 = 844
+	GameVersion1_21_120 = 859
 
 	TicksPerSecond = 20
 )
@@ -53,10 +75,6 @@ type Player struct {
 	// blockNetwork is fixed by the initial backend's StartGame. All backends reachable through an instant transfer
 	// must use the same block-network representation because the client does not receive another StartGame packet.
 	blockNetwork blocknetwork.Codec
-
-	// BroadcastChat is a function that broadcasts a message to all connected players.
-	// It is set by the handler when the player joins.
-	BroadcastChat func(string)
 
 	// With fast transfers, the client will still retain it's original runtime and unique IDs, so
 	// we must translate them to new ones, while still retaining the old ones for the client to use.
@@ -440,7 +458,7 @@ func (p *Player) Disconnect(reason string) {
 	p.SendPacketToClient(&packet.Disconnect{
 		Message:         reason,
 		FilteredMessage: reason,
-		Reason:          0,
+		//Reason:          packet.DisconnectReasonKicked,
 	})
 	p.Close()
 }
@@ -454,6 +472,14 @@ func (p *Player) BlockAddress(duration time.Duration) {
 	if rkListener, ok := utils.RaknetListener(p.listener); ok {
 		utils.BlockAddress(rkListener, p.RemoteAddr().(*net.UDPAddr).IP, duration)
 	}
+}
+
+func (p *Player) IsVersion(ver int32) bool {
+	return p.Version == ver
+}
+
+func (p *Player) VersionInRange(oldest, latest int32) bool {
+	return p.Version >= oldest && p.Version <= latest
 }
 
 func (p *Player) SetCloser(closer func()) {

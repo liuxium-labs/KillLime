@@ -48,8 +48,8 @@ func (d *BadPacketD) Detect(pk packet.Packet) {
 		if !pk.InputData.Load(packet.InputFlagPerformItemStackRequest) {
 			return
 		}
-		if req, ok := pk.ItemStackRequest.Value(); ok {
-			for _, action := range req.Actions {
+		if request, ok := pk.ItemStackRequest.Value(); ok {
+			for _, action := range request.Actions {
 				d.checkRequestAction(action)
 			}
 		}

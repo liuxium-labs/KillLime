@@ -10,41 +10,31 @@ import (
 	"time"
 )
 
+// DefaultAdminStorePath is the default file the example event handler persists
+// its operator and ban lists to when none is configured explicitly.
 const DefaultAdminStorePath = "killlime_admin.json"
 
+// AdminIdentity identifies an operator or a banned player. Bans and operators
+// match on either the XUID (which survives display-name changes) or the
+// display name itself.
 type AdminIdentity struct {
 	Name string `json:"name"`
 	XUID string `json:"xuid"`
 }
 
+// BanEntry describes an active ban.
 type BanEntry struct {
-	Identity  AdminIdentity `json:"identity"`
-	Reason    string        `json:"reason"`
-	By        string        `json:"by"`
-	At        time.Time     `json:"at"`
-	ExpiresAt *time.Time    `json:"expires_at,omitempty"`
+	Identity AdminIdentity `json:"identity"`
+	Reason   string        `json:"reason"`
+	By       string        `json:"by"`
+	At       time.Time     `json:"at"`
 }
 
-func (b BanEntry) IsExpired() bool {
-	return b.ExpiresAt != nil && time.Now().After(*b.ExpiresAt)
-}
-
-type AdminStore interface {
-	Operators() []AdminIdentity
-	FirstOperator() bool
-	PromoteIfFirstOperator(name, xuid string) bool
-	IsOperator(name, xuid string) bool
-	AddOperator(name, xuid string) bool
-	RemoveOperator(name, xuid string) bool
-	IsBanned(name, xuid string) (BanEntry, bool)
-	Ban(name, xuid, reason, by string)
-	BanTemp(name, xuid, reason, by string, expiresAt time.Time)
-	Unban(name, xuid string) bool
-	Bans() []BanEntry
-	Close() error
-}
-
-type JSONAdminStore struct {
+// AdminStore keeps the operator list and the active bans that are managed from
+// the game through the /ac op, /ac deop, /ac kick, /ac ban and /ac unban
+// commands. State is persisted to disk so operator and ban status survive
+// restarts.
+type AdminStore struct {
 	mu   sync.RWMutex
 	path string
 	log  *slog.Logger
@@ -52,22 +42,25 @@ type JSONAdminStore struct {
 	bans []BanEntry
 }
 
-func NewAdminStore(path string, log *slog.Logger) *JSONAdminStore {
+// NewAdminStore creates an admin store backed by the JSON file at path. If path
+// is empty the store is kept in memory only and is never written to disk. A nil
+// logger falls back to the default logger.
+func NewAdminStore(path string, log *slog.Logger) *AdminStore {
 	if log == nil {
 		log = slog.Default()
 	}
-	s := &JSONAdminStore{path: path, log: log}
+	s := &AdminStore{path: path, log: log}
 	s.load()
 	return s
 }
 
-func (s *JSONAdminStore) load() {
+func (s *AdminStore) load() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.loadLocked()
 }
 
-func (s *JSONAdminStore) loadLocked() {
+func (s *AdminStore) loadLocked() {
 	if s.path == "" {
 		return
 	}
@@ -91,7 +84,7 @@ func (s *JSONAdminStore) loadLocked() {
 	s.bans = d.Bans
 }
 
-func (s *JSONAdminStore) save() {
+func (s *AdminStore) save() {
 	if s.path == "" {
 		return
 	}
@@ -117,19 +110,24 @@ func (s *JSONAdminStore) save() {
 	}
 }
 
-func (s *JSONAdminStore) Operators() []AdminIdentity {
+// Operators returns a copy of the current operator list.
+func (s *AdminStore) Operators() []AdminIdentity {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]AdminIdentity(nil), s.ops...)
 }
 
-func (s *JSONAdminStore) FirstOperator() bool {
+// FirstOperator reports whether no operators are configured yet.
+func (s *AdminStore) FirstOperator() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.ops) == 0
 }
 
-func (s *JSONAdminStore) PromoteIfFirstOperator(name, xuid string) bool {
+// PromoteIfFirstOperator grants operator to the player if the operator list is
+// empty and reports whether the player was granted. The check and the add are
+// atomic so exactly one of several concurrent joiners can claim the slot.
+func (s *AdminStore) PromoteIfFirstOperator(name, xuid string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.ops) != 0 {
@@ -140,7 +138,9 @@ func (s *JSONAdminStore) PromoteIfFirstOperator(name, xuid string) bool {
 	return true
 }
 
-func (s *JSONAdminStore) IsOperator(name, xuid string) bool {
+// IsOperator reports whether the player described by name and xuid is an
+// operator.
+func (s *AdminStore) IsOperator(name, xuid string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, o := range s.ops {
@@ -151,7 +151,9 @@ func (s *JSONAdminStore) IsOperator(name, xuid string) bool {
 	return false
 }
 
-func (s *JSONAdminStore) AddOperator(name, xuid string) bool {
+// AddOperator adds the player to the operator list and persists it. It reports
+// whether the store changed.
+func (s *AdminStore) AddOperator(name, xuid string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.isOperatorLocked(name, xuid) {
@@ -162,7 +164,9 @@ func (s *JSONAdminStore) AddOperator(name, xuid string) bool {
 	return true
 }
 
-func (s *JSONAdminStore) RemoveOperator(name, xuid string) bool {
+// RemoveOperator removes the player from the operator list and persists it. It
+// reports whether an operator was removed.
+func (s *AdminStore) RemoveOperator(name, xuid string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	before := len(s.ops)
@@ -180,7 +184,7 @@ func (s *JSONAdminStore) RemoveOperator(name, xuid string) bool {
 	return false
 }
 
-func (s *JSONAdminStore) isOperatorLocked(name, xuid string) bool {
+func (s *AdminStore) isOperatorLocked(name, xuid string) bool {
 	for _, o := range s.ops {
 		if identityMatches(o, name, xuid) {
 			return true
@@ -189,25 +193,21 @@ func (s *JSONAdminStore) isOperatorLocked(name, xuid string) bool {
 	return false
 }
 
-func (s *JSONAdminStore) IsBanned(name, xuid string) (BanEntry, bool) {
+// IsBanned returns the active ban for the player, if any.
+func (s *AdminStore) IsBanned(name, xuid string) (BanEntry, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, b := range s.bans {
 		if identityMatches(b.Identity, name, xuid) {
-			if b.IsExpired() {
-				return BanEntry{}, false
-			}
 			return b, true
 		}
 	}
 	return BanEntry{}, false
 }
 
-func (s *JSONAdminStore) Ban(name, xuid, reason, by string) {
-	s.BanTemp(name, xuid, reason, by, time.Time{})
-}
-
-func (s *JSONAdminStore) BanTemp(name, xuid, reason, by string, expiresAt time.Time) {
+// Ban bans the player for the given reason and persists the ban. Banning an
+// already-banned player resets the reason and timestamp.
+func (s *AdminStore) Ban(name, xuid, reason, by string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry := BanEntry{
@@ -215,9 +215,6 @@ func (s *JSONAdminStore) BanTemp(name, xuid, reason, by string, expiresAt time.T
 		Reason:   reason,
 		By:       by,
 		At:       time.Now(),
-	}
-	if !expiresAt.IsZero() {
-		entry.ExpiresAt = &expiresAt
 	}
 	filtered := s.bans[:0]
 	for _, b := range s.bans {
@@ -229,7 +226,9 @@ func (s *JSONAdminStore) BanTemp(name, xuid, reason, by string, expiresAt time.T
 	s.save()
 }
 
-func (s *JSONAdminStore) Unban(name, xuid string) bool {
+// Unban removes any ban matching the player and persists the change. It reports
+// whether a ban existed.
+func (s *AdminStore) Unban(name, xuid string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	before := len(s.bans)
@@ -247,13 +246,12 @@ func (s *JSONAdminStore) Unban(name, xuid string) bool {
 	return false
 }
 
-func (s *JSONAdminStore) Bans() []BanEntry {
+// Bans returns a copy of the active bans.
+func (s *AdminStore) Bans() []BanEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]BanEntry(nil), s.bans...)
 }
-
-func (s *JSONAdminStore) Close() error { return nil }
 
 func identityMatches(id AdminIdentity, name, xuid string) bool {
 	if id.XUID != "" && xuid != "" && strings.EqualFold(id.XUID, xuid) {

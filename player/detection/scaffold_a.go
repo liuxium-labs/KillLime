@@ -52,6 +52,9 @@ func (d *ScaffoldA) Detect(pk packet.Packet) {
 	if !ok {
 		return
 	}
+	if !d.mPlayer.VersionInRange(player.GameVersion1_21_20, protocol.CurrentProtocol) {
+		return
+	}
 	if inHand, _ := d.mPlayer.HeldItems(); utils.IsBlockPlaceAlwaysSimBased(inHand.Item()) {
 		return
 	}

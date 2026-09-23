@@ -74,7 +74,7 @@ func (d *SpeedA) Detect(pk packet.Packet) {
 
 	// A player riding an entity moves at the vehicle's velocity, which is not
 	// bound by the player's movement speed.
-	if _, hasVehicle := i.ClientPredictedVehicle.Value(); hasVehicle {
+	if v, ok := i.ClientPredictedVehicle.Value(); ok && v != 0 {
 		d.mPlayer.PassDetection(d, 0.5)
 		return
 	}

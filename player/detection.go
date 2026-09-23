@@ -1,6 +1,5 @@
 package player
 
-// eeeeeeee
 import (
 	"fmt"
 	"math"
@@ -66,11 +65,7 @@ func (p *Player) FailDetection(d Detection, extraData ...any) {
 
 	oldVl := m.Violations
 	if m.TrustDuration > 0 {
-		if m.LastFlagged == 0 {
-			m.Violations += 1.0
-		} else {
-			m.Violations += math.Max(0, float64(m.TrustDuration)-float64(p.ServerTick-m.LastFlagged)) / float64(m.TrustDuration)
-		}
+		m.Violations += math.Max(0, float64(m.TrustDuration)-float64(p.ServerTick-m.LastFlagged)) / float64(m.TrustDuration)
 	} else {
 		m.Violations++
 	}
@@ -102,21 +97,11 @@ func (p *Player) FailDetection(d Detection, extraData ...any) {
 			"vl", m.Violations,
 			"data", extraDatString,
 		)
-		if p.BroadcastChat != nil {
-			flagMsg := fmt.Sprintf("§e[KillLime] §c%s §7flagged §d%s(%s) §7[§cx%.0f§7]", p.IdentityDat.DisplayName, d.Type(), d.SubType(), m.Violations)
-			p.BroadcastChat(flagMsg)
-		}
 	}
 
-	if d.Punishable() && m.Violations >= m.MaxViolations {
+	if !oconfig.Global.UseLegacyEvents && d.Punishable() && m.Violations >= m.MaxViolations {
 		ctx = event.C(p)
 		message := DefaultDetectionDisconnectMessage
-
-		dtcCfg := oconfig.DtcOpts(d.Type() + "_" + d.SubType())
-		if dtcCfg.KickCode != "" {
-			message = fmt.Sprintf("§c§lKick code: %s", dtcCfg.KickCode)
-		}
-
 		p.EventHandler().HandlePunishment(ctx, d, &message)
 		if ctx.Cancelled() {
 			return

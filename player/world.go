@@ -473,6 +473,10 @@ func (p *Player) expectedBlockBreakTime(pos protocol.BlockPos) float32 {
 		breakContext.MiningFatigueLevel = int(effect.Amplifier)
 	}
 	breakTime := float32(block.BreakDuration(b, held, breakContext).Milliseconds())
+	// On versions below 1.21.50, the block break time for wool is shorter by ~25% See https://github.com/killlime/killlime/issues/107
+	if _, isWool := b.(block.Wool); isWool && p.Version < GameVersion1_21_50 {
+		breakTime *= 0.75
+	}
 
 	return float32(breakTime / 50)
 }

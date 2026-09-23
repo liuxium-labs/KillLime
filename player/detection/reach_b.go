@@ -48,7 +48,7 @@ func (d *ReachB) Metadata() *player.DetectionMetadata {
 func (d *ReachB) Detect(packet.Packet) {}
 
 func (d *ReachB) run(c player.CombatComponent) {
-	if d.mPlayer.InputMode == packet.InputModeTouch || d.mPlayer.Movement().TicksSinceTeleport() <= 20 || d.mPlayer.Movement().InCorrectionCooldown() {
+	if d.mPlayer.Movement().TicksSinceTeleport() <= 20 || d.mPlayer.Movement().InCorrectionCooldown() {
 		return
 	}
 	minReach := float32(math32.MaxFloat32)

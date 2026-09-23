@@ -80,7 +80,7 @@ func (d *BadPacketN) Detect(pk packet.Packet) {
 
 	// A player riding an entity reports the vehicle's position, which can move
 	// faster than the player could ever walk. Skip the distance check entirely.
-	if _, hasVehicle := i.ClientPredictedVehicle.Value(); hasVehicle {
+	if v, ok := i.ClientPredictedVehicle.Value(); ok && v != 0 {
 		d.lastPos = clientPos
 		return
 	}

@@ -49,8 +49,13 @@ func (d *BadPacketC) Detect(pk packet.Packet) {
 			d.mPlayer.FailDetection(d)
 		}
 	case *packet.PlayerAction:
-		// Since 1.21.20+ block breaking moved into PlayerAuthInput
-		// BlockActions field; any PlayerAction break packet on 1.26.40+ is invalid.
+		// On 1.21.20+ block breaking moved into the PlayerAuthInput
+		// BlockActions field; older clients break blocks through
+		// PlayerAction packets legitimately, so only flag the anomaly on
+		// versions where it is impossible.
+		if !d.mPlayer.VersionInRange(player.GameVersion1_21_20, protocol.CurrentProtocol) {
+			break
+		}
 		switch pk.ActionType {
 		case protocol.PlayerActionPredictDestroyBlock, protocol.PlayerActionStartBreak, protocol.PlayerActionCrackBreak,
 			protocol.PlayerActionContinueDestroyBlock, protocol.PlayerActionAbortBreak, protocol.PlayerActionStopBreak:
@@ -61,18 +66,17 @@ func (d *BadPacketC) Detect(pk packet.Packet) {
 			}
 		}
 	case *packet.PlayerAuthInput:
-		if pk.InputData.Load(packet.InputFlagPerformItemInteraction) {
-			if interactionData, ok := pk.ItemInteractionData.Value(); ok && interactionData.ActionType == protocol.UseItemActionBreakBlock &&
-				d.mPlayer.GameMode != packet.GameTypeCreative {
-				d.mPlayer.FailDetection(d)
-			}
+		if itemInteraction, ok := pk.ItemInteractionData.Value(); ok &&
+			pk.InputData.Load(packet.InputFlagPerformItemInteraction) &&
+			itemInteraction.ActionType == protocol.UseItemActionBreakBlock &&
+			d.mPlayer.GameMode != packet.GameTypeCreative {
+			d.mPlayer.FailDetection(d)
 		}
-		if blockActions, ok := pk.BlockActions.Value(); ok {
-			for _, action := range blockActions {
-				if action.Action == protocol.PlayerActionCreativePlayerDestroyBlock && d.mPlayer.GameMode != packet.GameTypeCreative {
-					d.mPlayer.FailDetection(d)
-					break
-				}
+		blockActions, _ := pk.BlockActions.Value()
+		for _, action := range blockActions {
+			if action.Action == protocol.PlayerActionCreativePlayerDestroyBlock && d.mPlayer.GameMode != packet.GameTypeCreative {
+				d.mPlayer.FailDetection(d)
+				break
 			}
 		}
 	}

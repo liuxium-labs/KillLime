@@ -124,8 +124,8 @@ func (p *Player) HandleClientPacket(ctx *context.HandlePacketContext) {
 		p.acks.Tick(true)
 
 		if pk.InputData.Load(packet.InputFlagPerformItemStackRequest) {
-			if req, ok := pk.ItemStackRequest.Value(); ok {
-				p.inventory.HandleSingleRequest(req)
+			if request, ok := pk.ItemStackRequest.Value(); ok {
+				p.inventory.HandleSingleRequest(request)
 			}
 		}
 
@@ -239,12 +239,12 @@ func (p *Player) HandleClientPacket(ctx *context.HandlePacketContext) {
 			for _, action := range pk.Actions {
 				if action.SourceType == protocol.InventoryActionSourceWorld && action.InventorySlot == 0 {
 					droppedCount = int(action.NewItem.Stack.Count)
-				} else if action.SourceType == protocol.InventoryActionSourceContainer {
-					if wid, ok := action.WindowID.Value(); ok && wid == protocol.WindowIDInventory {
-						sourceSlot = int(action.InventorySlot)
-						foundClientItemStack = true
-					}
+} else if action.SourceType == protocol.InventoryActionSourceContainer {
+				if windowID, ok := action.WindowID.Value(); ok && windowID == int8(protocol.WindowIDInventory) {
+					sourceSlot = int(action.InventorySlot)
+					foundClientItemStack = true
 				}
+			}
 			}
 
 			if !foundClientItemStack || sourceSlot == -1 || droppedCount == -1 {
@@ -416,7 +416,8 @@ func (p *Player) HandleServerPacket(ctx *context.HandlePacketContext) {
 		p.inventory.HandleItemStackResponse(pk)
 	case *packet.LevelChunk:
 		p.worldUpdater.HandleLevelChunk(pk)
-		fullChunk := !pk.CacheEnabled && pk.SubChunkCount == 0
+		_, requestMode := pk.SubChunkLimit.Value()
+		fullChunk := !pk.CacheEnabled && !requestMode
 		if fullChunk && p.opts.Network.AttemptFixChunks {
 			if err := oworld.ReencodeLevelChunk(pk, p.BlockNetwork()); err != nil {
 				p.Log().Warn("unable to re-encode chunk", "error", err)

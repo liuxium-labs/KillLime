@@ -299,8 +299,9 @@ func raiseMaxViolations(d player.Detection) {
 }
 
 // TestBadPacketOLegitJumpPressNotFlagged verifies that a normal jump press
-// does not flag BadPacketO. The detection is currently disabled because
-// JUMP_DOWN semantics changed in Bedrock 1.26.x.
+// (WANT_UP + JUMPING + JUMP_DOWN in the same frame, followed by hold and
+// release) does not flag BadPacketO. Holding + press in one frame is exactly
+// what a vanilla client sends on the press edge.
 func TestBadPacketOLegitJumpPressNotFlagged(t *testing.T) {
 	p := newTestPlayer(t)
 	d := findDetection(p, TypeBadPacket, "O")
@@ -328,9 +329,9 @@ func TestBadPacketOLegitJumpPressNotFlagged(t *testing.T) {
 	}
 }
 
-// TestBadPacketOForcedJumpFlagsFlagged verifies that forced jump flags don't
-// cause violations. The detection is disabled because JUMP_DOWN semantics
-// changed in Bedrock 1.26.x.
+// TestBadPacketOForcedJumpFlagsFlagged verifies that forcing WANT_UP, JUMPING
+// and JUMP_DOWN on every input (constant jump spoof, as disablers do) flags
+// BadPacketO on the second consecutive frame.
 func TestBadPacketOForcedJumpFlagsFlagged(t *testing.T) {
 	p := newTestPlayer(t)
 	d := findDetection(p, TypeBadPacket, "O")
@@ -343,20 +344,22 @@ func TestBadPacketOForcedJumpFlagsFlagged(t *testing.T) {
 		handleClient(p, auth)
 		p.Tick()
 	}
-	if vl := violations(d); vl != 0 {
-		t.Fatalf("BadPacketO violations = %v, want 0 (detection disabled for 1.26.x)", vl)
+	if vl := violations(d); vl < 1 {
+		t.Fatalf("BadPacketO violations = %v, want >= 1 (forced jump flags should flag)", vl)
 	}
 }
 
-// TestBadPacketCPlayerActionBreak flags block breaking via PlayerAction on
-// 1.26.40+, where all block breaking is routed through PlayerAuthInput.
-func TestBadPacketCPlayerActionBreak(t *testing.T) {
+// TestBadPacketCPlayerActionBreakLegacyAllowed verifies that block breaking
+// through PlayerAction packets on pre-1.21.20 clients is not flagged, since
+// that is the only way those clients can break blocks.
+func TestBadPacketCPlayerActionBreakLegacyAllowed(t *testing.T) {
 	p := newTestPlayer(t)
+	p.Version = player.GameVersion1_20_60
 	d := findDetection(p, TypeBadPacket, "C")
 	raiseMaxViolations(d)
 	d.Detect(&packet.PlayerAction{ActionType: protocol.PlayerActionStopBreak})
-	if vl := violations(d); vl == 0 {
-		t.Fatalf("BadPacketC violations = %v, want >= 1 (PlayerAction break should flag on 1.26.40+)", vl)
+	if vl := violations(d); vl != 0 {
+		t.Fatalf("BadPacketC violations = %v, want 0 (legacy PlayerAction break must not flag)", vl)
 	}
 }
 
@@ -403,8 +406,8 @@ func TestBadPacketCItemInteractionBreakFlagged(t *testing.T) {
 	d := findDetection(p, TypeBadPacket, "C")
 	raiseMaxViolations(d)
 	d.Detect(&packet.PlayerAuthInput{
-		InputData:           bitSetWith(packet.InputFlagPerformItemInteraction),
-		ItemInteractionData: protocol.Option(protocol.UseItemTransactionData{ActionType: protocol.UseItemActionBreakBlock}),
+		InputData:            bitSetWith(packet.InputFlagPerformItemInteraction),
+		ItemInteractionData:  protocol.Option(protocol.UseItemTransactionData{ActionType: protocol.UseItemActionBreakBlock}),
 	})
 	if vl := violations(d); vl < 1 {
 		t.Fatalf("BadPacketC violations = %v, want >= 1 (item interaction break in survival should flag)", vl)
@@ -425,11 +428,68 @@ func TestBadPacketCItemInteractionClickBlockAllowed(t *testing.T) {
 	}
 }
 
-// bitSetWith returns a fresh PlayerAuthInput InputFlags with the given flag set.
+// bitSetWith returns a fresh PlayerAuthInput bitset with the given flag set.
 func bitSetWith(flag int) protocol.InputFlags {
 	bits := protocol.NewInputFlags(packet.InputFlagCount)
 	bits.Set(flag)
 	return bits
+}
+
+// TestBadPacketLGroundedGravityStepAllowed verifies that a player reporting the
+// vanilla grounded gravity step (delta.y = -0.0784) with the vertical collision
+// flag is not flagged. 1.26.51+ clients report exactly this pattern on every
+// grounded tick, and the authoritative world state is not always available, so
+// this must never fail regardless of what the simulation resolves.
+func TestBadPacketLGroundedGravityStepAllowed(t *testing.T) {
+	p := newTestPlayer(t)
+	d := findDetection(p, TypeBadPacket, "L")
+	raiseMaxViolations(d)
+	// Warm up past the 20 tick spawn-teleport grace period: the teleport tick
+	// counter only advances on accepted inputs, so interleave inputs and ticks.
+	for tick := int64(1); tick <= 25; tick++ {
+		tickInput(p, tick)
+	}
+	// Note: the authoritative simulation deliberately does NOT confirm ground
+	// contact here, mirroring a proxy that has not ingested the world yet.
+	d.Detect(&packet.PlayerAuthInput{
+		Tick:       1000,
+		Delta:      mgl32.Vec3{0, -0.0784, 0},
+		InputData:  bitSetWith(packet.InputFlagVerticalCollision),
+		InputMode:  packet.InputModeMouse,
+		MoveVector: mgl32.Vec2{},
+	})
+	if vl := violations(d); vl != 0 {
+		t.Fatalf("BadPacketL violations = %v, want 0 (vanilla grounded gravity step must not flag)", vl)
+	}
+}
+
+// TestBadPacketLAirborneVerticalCollisionFlagged verifies that a downward
+// velocity faster than a grounded player can physically fall, reported together
+// with the vertical collision flag while the simulation resolves the player as
+// airborne, is still flagged.
+func TestBadPacketLAirborneVerticalCollisionFlagged(t *testing.T) {
+	p := newTestPlayer(t)
+	d := findDetection(p, TypeBadPacket, "L")
+	raiseMaxViolations(d)
+	// Warm up past the 20 tick spawn-teleport grace period: the teleport tick
+	// counter only advances on accepted inputs, so interleave inputs and ticks.
+	for tick := int64(1); tick <= 25; tick++ {
+		tickInput(p, tick)
+	}
+	// A spoofer fakes the vertical collision flag while moving down faster than
+	// the gravity step; sustain the pattern across a few frames to fill the buffer.
+	for i := 0; i < 3; i++ {
+		d.Detect(&packet.PlayerAuthInput{
+			Tick:       uint64(1000 + i),
+			Delta:      mgl32.Vec3{0, -0.25, 0},
+			InputData:  bitSetWith(packet.InputFlagVerticalCollision),
+			InputMode:  packet.InputModeMouse,
+			MoveVector: mgl32.Vec2{},
+		})
+	}
+	if vl := violations(d); vl < 1 {
+		t.Fatalf("BadPacketL violations = %v, want >= 1 (spoofed vertical collision while airborne)", vl)
+	}
 }
 
 // TestBadPacketNSpawnFarFromOriginAllowed verifies that a player who spawns far
@@ -554,8 +614,7 @@ func TestBadPacketKSingleSpinToggleAllowed(t *testing.T) {
 }
 
 // TestBadPacketKRepeatedSpinToggleFlagged verifies the repeated same-tick spin
-// start+stop pattern flags BadPacketK. MaxViolations is 1 so the third call
-// triggers a disconnect panic in replay mode — we catch it.
+// start+stop pattern flags BadPacketK.
 func TestBadPacketKRepeatedSpinToggleFlagged(t *testing.T) {
 	p := newTestPlayer(t)
 	d := findDetection(p, TypeBadPacket, "K")
@@ -564,10 +623,7 @@ func TestBadPacketKRepeatedSpinToggleFlagged(t *testing.T) {
 	}
 	for i := 0; i < 3; i++ {
 		auth := inputWithData(packet.InputFlagStartSpinAttack, packet.InputFlagStopSpinAttack)
-		func() {
-			defer func() { recover() }()
-			d.Detect(auth)
-		}()
+		d.Detect(auth)
 	}
 	if vl := violations(d); vl < 1 {
 		t.Fatalf("BadPacketK violations = %v, want >= 1 (repeated spin toggle should flag)", vl)
@@ -627,17 +683,18 @@ func TestNukerABreakTransactionFlagsNewVersion(t *testing.T) {
 	}
 }
 
-// TestNukerABreakTransaction flags break_block transactions on 1.26.40+,
-// since vanilla clients never send them on modern versions.
-func TestNukerABreakTransaction(t *testing.T) {
+// TestNukerABreakTransactionLegacyAllowed verifies the same transaction does
+// not flag on pre-1.21.20 clients, since those clients legitimately complete
+// block breaks with it.
+func TestNukerABreakTransactionLegacyAllowed(t *testing.T) {
 	p := newTestPlayer(t)
+	p.Version = player.GameVersion1_20_60
 	d := findDetection(p, TypeNuker, "A")
-	raiseMaxViolations(d)
 	d.Detect(&packet.InventoryTransaction{TransactionData: &protocol.UseItemTransactionData{
 		ActionType: protocol.UseItemActionBreakBlock,
 	}})
-	if vl := violations(d); vl == 0 {
-		t.Fatalf("NukerA violations = %v, want >= 1 (break_block transaction should flag on 1.26.40+)", vl)
+	if vl := violations(d); vl != 0 {
+		t.Fatalf("NukerA violations = %v, want 0 (legacy break_block transaction must not flag)", vl)
 	}
 }
 

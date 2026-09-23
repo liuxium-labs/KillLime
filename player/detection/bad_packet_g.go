@@ -55,18 +55,15 @@ func (d *BadPacketG) Detect(pk packet.Packet) {
 		}
 	case *packet.PlayerAuthInput:
 		if pk.InputData.Load(packet.InputFlagPerformItemInteraction) {
-			if interactionData, ok := pk.ItemInteractionData.Value(); ok {
-				if !utils.IsBlockFaceValid(interactionData.BlockFace) {
-					d.mPlayer.FailDetection(d)
-				}
+			if itemInteraction, ok := pk.ItemInteractionData.Value(); ok && !utils.IsBlockFaceValid(itemInteraction.BlockFace) {
+				d.mPlayer.FailDetection(d)
 			}
 		}
 		if pk.InputData.Load(packet.InputFlagPerformBlockActions) {
-			if blockActions, ok := pk.BlockActions.Value(); ok {
-				for _, action := range blockActions {
-					if action.Action != protocol.PlayerActionAbortBreak && !utils.IsBlockFaceValid(action.Face) {
-						d.mPlayer.FailDetection(d)
-					}
+			blockActions, _ := pk.BlockActions.Value()
+			for _, action := range blockActions {
+				if action.Action != protocol.PlayerActionAbortBreak && !utils.IsBlockFaceValid(action.Face) {
+					d.mPlayer.FailDetection(d)
 				}
 			}
 		}

@@ -91,9 +91,8 @@ func (ack *SubChunkUpdate) Run() {
 				buf.Reset()
 			}
 			bufUsed = true
-			if payload, ok := entry.RawPayload.Value(); ok {
-				buf.Write(payload)
-			}
+			payload, _ := entry.RawPayload.Value()
+			buf.Write(payload)
 
 			cachedSub, err := oworld.CacheSubChunk(buf, ch, chunkPos, ack.mPlayer.BlockNetwork())
 			if err != nil {

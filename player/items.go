@@ -49,5 +49,5 @@ func (p *Player) StackToItem(it protocol.ItemStack) item.Stack {
 
 // noinspection ALL
 //
-//go:linkname nbtconv_Item github.com/df-mc/dragonfly/server/item.ReadNBT
+//go:linkname nbtconv_Item github.com/df-mc/dragonfly/server/internal/nbtconv.Item
 func nbtconv_Item(data map[string]any, s *item.Stack) item.Stack

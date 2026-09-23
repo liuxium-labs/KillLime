@@ -52,11 +52,10 @@ func (d *NukerA) Detect(pk packet.Packet) {
 	// fast, so counting it would flag legitimate fast clickers.
 	if authInput, ok := pk.(*packet.PlayerAuthInput); ok {
 		brokenInTick := 0
-		if blockActions, ok := authInput.BlockActions.Value(); ok {
-			for _, action := range blockActions {
-				if action.Action == protocol.PlayerActionPredictDestroyBlock {
-					brokenInTick++
-				}
+		blockActions, _ := authInput.BlockActions.Value()
+		for _, action := range blockActions {
+			if action.Action == protocol.PlayerActionPredictDestroyBlock {
+				brokenInTick++
 			}
 		}
 		if brokenInTick > 3 {
@@ -74,9 +73,11 @@ func (d *NukerA) Detect(pk packet.Packet) {
 		return
 	}
 	// Since 1.21.20 block breaking moved into PlayerAuthInput.BlockActions;
-	// on 1.26.40+ a break_block item transaction is never sent by the
-	// vanilla client.
-	if trDat.ActionType == protocol.UseItemActionBreakBlock && (d.mPlayer.GameMode == packet.GameTypeSurvival || d.mPlayer.GameMode == packet.GameTypeAdventure) {
+	// on these versions a break_block item transaction is never sent by the
+	// vanilla client. Older clients (client-authoritative breaking) complete
+	// breaks with exactly this transaction, so exclude them.
+	if d.mPlayer.VersionInRange(player.GameVersion1_21_20, protocol.CurrentProtocol) &&
+		trDat.ActionType == protocol.UseItemActionBreakBlock && (d.mPlayer.GameMode == packet.GameTypeSurvival || d.mPlayer.GameMode == packet.GameTypeAdventure) {
 		d.mPlayer.FailDetection(d)
 	}
 }
