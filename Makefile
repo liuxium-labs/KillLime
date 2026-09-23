@@ -1,4 +1,5 @@
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+VERSION := 2.5.0
 
 .PHONY: lint lint-fix build release
 
@@ -16,4 +17,4 @@ build:
 	cd example/dragonfly && go build -trimpath -ldflags "-s -w" -o ../../release/killlime-dragonfly.exe .
 
 release: build
-	cd release && powershell -Command "Compress-Archive -Path 'killlime-proxy.exe','killlime-dragonfly.exe' -DestinationPath 'killlime-windows-x64.zip' -Force"
+	cd release && powershell -Command "Compress-Archive -Path 'killlime-proxy.exe','killlime-dragonfly.exe' -DestinationPath 'killlime-$(VERSION)-windows-x64.zip' -Force"
